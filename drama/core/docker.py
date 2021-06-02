@@ -29,15 +29,14 @@ class ExecResult:
 
     Contains  a returncode to signal success (=0) or error (<>0).
 
-    Outputs that were written to standard output and standard error are part of
-    the result object. Outputs are captured as lists of strings.
+    Outputs that were written to standard output and standard error are
+    captured in the log as a list of strings.
 
     If an exception was raised during execution it is captured in the
     respective property *exception*.
     """
     returncode: Optional[int] = 0
-    stdout: Optional[List[str]] = field(default_factory=list)
-    stderr: Optional[List[str]] = field(default_factory=list)
+    logs: Optional[List[str]] = field(default_factory=list)
     exception: Optional[Exception] = None
 
     def is_error(self) -> bool:
@@ -301,19 +300,36 @@ class DockerRun:
         client = docker.from_env()
         try:
             for cmd in commands:
-                logs = client.containers.run(
+                # Run detached container to be able to capture output to
+                # both, STDOUT and STDERR. DO NOT remove the container yet
+                # in order to be able to get the captured outputs.
+                container = client.containers.run(
                     image=image,
                     command=cmd,
                     volumes=volumes,
-                    remove=remove,
+                    remove=False,
                     environment=env,
-                    stdout=True
+                    detach=True
                 )
+                # Wait for container to finish. The returned dictionary will
+                # contain the container's exit code ('StatusCode').
+                r = container.wait()
+                # Add container logs to the logs for the Docker run.
+                logs = container.logs()
                 if logs:
-                    result.stdout.append(logs.decode('utf-8'))
+                    result.logs.append(logs.decode('utf-8'))
+                # Remove container if the remove flag is set to True.
+                if remove:
+                    container.remove()
+                # Check exit code for the container. If the code is not zero
+                # an error occurred and we exit the commands loop.
+                status_code = r.get('StatusCode')
+                if status_code != 0:
+                    result.returncode = status_code
+                    break
         except (ContainerError, ImageNotFound, APIError) as ex:
             strace = '\n'.join(stacktrace(ex))
-            result.stderr.append(strace)
+            result.logs.append(strace)
             result.exception = ex
             result.returncode = 1
         return result

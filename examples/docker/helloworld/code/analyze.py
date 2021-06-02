@@ -56,4 +56,6 @@ if __name__ == '__main__':
 
     parsed_args = parser.parse_args(args)
 
+    print(f'Analyze results in {parsed_args.inputfile}')
+
     main(inputfile=parsed_args.inputfile, outputfile=parsed_args.outputfile)

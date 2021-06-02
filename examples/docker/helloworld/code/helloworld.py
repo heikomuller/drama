@@ -20,6 +20,8 @@ def hello(inputfile, outputfile, greeting='Hello', sleeptime=0.0):
         for line in f.readlines():
             names.append(line.strip())
 
+    print('\nThe names in {} are:\n{}'.format(inputfile, '\n'.join(names)))
+
     # ensure output directory exists:
     # influenced by http://stackoverflow.com/a/12517490
     if not os.path.exists(os.path.dirname(outputfile)):
@@ -34,6 +36,7 @@ def hello(inputfile, outputfile, greeting='Hello', sleeptime=0.0):
         for name in names:
             f.write(greeting + " " + name + "!\n")
             f.flush()
+            print(f'sleep for {sleeptime} sec.')
             time.sleep(sleeptime)
 
 
@@ -47,6 +50,8 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--sleeptime", default=1.0, type=float, required=False)
 
     parsed_args = parser.parse_args(args)
+
+    print(f'Say {parsed_args.greeting} to everyone in {parsed_args.inputfile}')
 
     hello(
         inputfile=parsed_args.inputfile,
