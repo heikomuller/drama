@@ -11,7 +11,6 @@ from drama.process import Process
 
 # Path to the Python script for the Hello World example.
 DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources')
-NAMES = os.path.join(DIR, 'NAMES-F.txt')
 SCRIPT = os.path.join(DIR, 'helloworld.py')
 
 
@@ -25,6 +24,8 @@ SCRIPT = os.path.join(DIR, 'helloworld.py')
 )
 def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
     """
+    Print greeting for each name in a given input file. Runs code as Python
+    script (``resources/helloworld.py``) within a Docker container.
     """
     inputs = pcs.get_from_upstream()
     if not inputs:
@@ -37,12 +38,18 @@ def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
 
     input_file = Path(inputs["TempFile"][0]["resource"])
 
+    # Create base directory for Docker run.
     run = DockerRun(basedir=Path(pcs.storage.local_dir, "helloworld"))
+    # Copy Python script to code/helloworld.py in the Docker run filder
     run.copy(src=SCRIPT, dst=os.path.join('code', 'helloworld.py'))
+    # Copy names file to data/names.txt in the Docker run folder.
     run.copy(src=input_file, dst=os.path.join('data', 'names.txt'))
+    # Create output directory for result file in the Docker run folder.
     run.localpath('results').mkdir()
+    # Bind all created directories 'code', 'data', and 'results' as volumes
+    # for the Docker container.
     run.bind_dirs()
-
+    # Run the helloworld.py script using the standard Python Docker image.
     result = run.exec(
         image='python:3.7',
         commands=[
@@ -50,19 +57,17 @@ def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
                 'python code/helloworld.py '
                 '--inputfile data/names.txt '
                 '--outputfile results/greetings.txt '
-                '--sleeptime 1 '
-                '--greeting Hello'
+                f'--sleeptime={sleeptime} '
+                f'--greeting={greeting}'
             )
         ]
     )
-
+    # Raise error if the run was not successful.
     if not result.is_success():
         raise Exception('\n'.join(result.logs))
-
+    # Add result file to persistent storage and to the step result.
     filepath = run.localpath('results', 'greetings.txt')
-    # Send to remote storage
     greetings_file = pcs.storage.put_file(filepath)
-    # Send to downstream
     output_file = TempFile(resource=greetings_file)
     pcs.to_downstream(output_file)
     return TaskResult(files=[greetings_file])
