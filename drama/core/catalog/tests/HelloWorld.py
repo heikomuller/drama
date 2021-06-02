@@ -27,20 +27,19 @@ def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
     Print greeting for each name in a given input file. Runs code as Python
     script (``resources/helloworld.py``) within a Docker container.
     """
+    # Get input file from upstream operator. Expects a temporary file
+    # containing the list of names.
     inputs = pcs.get_from_upstream()
     if not inputs:
         raise ValueError("no input file")
-
-    # Expects an excel dataset in the inputs. Raise error if the 'ExcelDataset' key
-    # is missing in the inputs dictionary.
     if "TempFile" not in inputs:
         raise ValueError(f"Names file is missing in inputs '{inputs.keys()}'")
-
     input_file = Path(inputs["TempFile"][0]["resource"])
 
+    # -- Prepare run ----------------------------------------------------------
     # Create base directory for Docker run.
     run = DockerRun(basedir=Path(pcs.storage.local_dir, "helloworld"))
-    # Copy Python script to code/helloworld.py in the Docker run filder
+    # Copy Python script to code/helloworld.py in the Docker run folder
     run.copy(src=SCRIPT, dst=os.path.join('code', 'helloworld.py'))
     # Copy names file to data/names.txt in the Docker run folder.
     run.copy(src=input_file, dst=os.path.join('data', 'names.txt'))
@@ -49,6 +48,8 @@ def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
     # Bind all created directories 'code', 'data', and 'results' as volumes
     # for the Docker container.
     run.bind_dirs()
+
+    # -- Run ------------------------------------------------------------------
     # Run the helloworld.py script using the standard Python Docker image.
     result = run.exec(
         image='python:3.7',
@@ -62,6 +63,8 @@ def execute(pcs: Process, greeting: str, sleeptime: float) -> TaskResult:
             )
         ]
     )
+
+    # -- Process run results --------------------------------------------------
     # Raise error if the run was not successful.
     if not result.is_success():
         raise Exception('\n'.join(result.logs))
