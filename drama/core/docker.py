@@ -332,6 +332,7 @@ class DockerRun:
             result.logs.append(strace)
             result.exception = ex
             result.returncode = 1
+        client.close()
         return result
 
     def localpath(self, *args) -> Path:
