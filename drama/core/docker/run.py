@@ -13,13 +13,8 @@ from typing import Dict, List, Optional, Union
 
 import docker
 import shutil
-import traceback
 
-
-"""Type alias for path expressions that may either be represented as strings
-or pathlib.Path objects.
-"""
-Pathname = Union[str, Path]
+from drama.core.docker.base import Pathname, stacktrace
 
 
 @dataclass
@@ -27,7 +22,7 @@ class ExecResult:
     """
     Result of executing a (list of) command(s) inside a Docker container.
 
-    Contains  a returncode to signal success (=0) or error (<>0).
+    Contains  a return code to signal success (=0) or error (<>0).
 
     Outputs that were written to standard output and standard error are
     captured in the log as a list of strings.
@@ -41,7 +36,7 @@ class ExecResult:
 
     def is_error(self) -> bool:
         """
-        Test if the returncode is non-zero indicating an error run.
+        Test if the return code is non-zero indicating an error run.
 
         Returns
         -------
@@ -51,7 +46,7 @@ class ExecResult:
 
     def is_success(self) -> bool:
         """
-        Test if the returncode is zero indicating a successful run.
+        Test if the return code is zero indicating a successful run.
 
         Returns
         -------
@@ -79,8 +74,6 @@ class DockerRun:
 
         Parameters
         ----------
-        pcs: Process
-            Handle for the drama process.
         basedir: Pathname
             Relative base directory in the process' local storage that is used
             to store files for the Docker run.
@@ -295,7 +288,7 @@ class DockerRun:
         commands = commands if isinstance(commands, list) else [commands]
         # Create bindings for defined volumes.
         volumes = {f.absolute(): {'bind': f'/{target}', 'mode': 'rw'} for f, target in self._volumes.items()}
-        # Run the individual commands using the local Docker deamon.
+        # Run the individual commands using the local Docker daemon.
         result = ExecResult()
         client = docker.from_env()
         try:
@@ -351,25 +344,3 @@ class DockerRun:
         Path
         """
         return Path(self.basedir, *args)
-
-
-# -- Helper Functions ---------------------------------------------------------
-
-def stacktrace(ex) -> List[str]:
-    """
-    Get list of strings representing the stack trace for a given exception.
-
-    Parameters
-    ----------
-    ex: Exception
-        Exception that was raised.
-
-    Returns
-    -------
-    list of string
-    """
-    try:
-        st = traceback.format_exception(type(ex), ex, ex.__traceback__)
-    except (AttributeError, TypeError):
-        st = [str(ex)]
-    return [line.strip() for line in st]
