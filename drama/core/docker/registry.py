@@ -25,8 +25,9 @@ schema:
               outputs:
                   - src: "relative source file path inside Docker container"
                     type: "file type identifier"
-                    dst:
-                        - "target file URI"
+                    dst: "target file URI"
+                    tags:
+                        - "associate tags with file"
           parameters:
               - name: "unique parameter name"
                 type: "data type: str, int, or float"
