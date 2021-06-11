@@ -65,13 +65,13 @@ is executed. Each parameter has a unique identifier and one of the following raw
 str, int, or float. In addition, a default value can be defined for the parameter. The default
 value will be used if no value is given for the parameter when the operator is invoked.
 
-- ``files`` contains specification for input files that will be made available to the Docker
+- ``files`` contains specifications for input files that will be made available to the Docker
 container via mounted volumes, and output files that will be copied from the mounted container
 volumes to the workflow context and/or persistent storage. References to files inside a Docker
 container are made via relative path expressions. References to files in the workflow context
-or on persistent storage are made via URIs that have the following format: <scheme>::<fileIdentifier>
-The scheme refers to the type of storage that contains the file. The following three schemes
-are currently supported:
+or on persistent storage are made via tag names or via URIs that have the following
+format: <scheme>::<fileIdentifier> The scheme refers to the type of storage that
+contains the file. The following two schemes are currently supported:
 
 - *store*: The global persistent store for data files that are independent
   of individual workflow runs and that are available as input for tasks in
@@ -79,21 +79,15 @@ are currently supported:
 - *rundir*: Each workflow run has a dedicated run directory where those files
   are stored that are generated during the workflow run and that are kept
   as the workflow result after the workflow run finishes.
-- *context*: Volatile storage for intermediate files that are generated and used
-  by different workflow steps. The context represents the upstream/downstream
-  flow of data files during workflow execution. The files in the context that
-  are not moved to the global store or the workflow run folder will be deleted
-  at the end of a successful workflow run.
 
-The *fileIdentifier* is store-specific. For the schemes *store* and *rundir* it is a relative
-path expression, and for *context* an arbitrary text string.
+The *fileIdentifier*  is a relative path expression.
 
 
 Building Docker Images
 ----------------------
 
-The ``dockerImages`` elements contains a list of directives for building Docker images that
-are required for running the defined operators. These images are build from a base image
+The ``dockerImages`` element contains a list of directives for building Docker images that
+are required for running the defined operators. These images are built from a base image
 and can include source code files from the repository. The exact schema for the documents
 in the list is dependent on the base image. For Python base images (``python:3.7``, ``python:3.8``,
 ``python:3.9``) the document can list additional required packages that need to be installed
@@ -101,7 +95,7 @@ in the created image. The ``files`` element refers to files in the repository (`
 the file path relative to the repository root) that are copied into the created Docker
 image (``dst``).
 
-Docker images will be build once at the time when the operators are registered.
+Docker images will be built once at the time when the operators are registered.
 """
 
 from abc import ABC, abstractmethod
@@ -128,6 +122,7 @@ class InputFile:
     # the schema and the file identifier or file path. The file scheme can be
     # one of the following: 'store', 'rundir', or 'context'.
     src: str
+    # Not clear if this is needed!
     type: str
     # Relative path specifying the file location inside the Docker container.
     dst: str
@@ -140,11 +135,14 @@ class OutputFile:
     """
     # Relative path specifying the file location inside the Docker container.
     src: str
+    # Not clear if this is needed!
     type: str
     # List of target destinations where the output file will be stored and made
     # available to downstream operators. File destinations are specified as
     # URIs following the same format as input source files.
-    dst: List[str]
+    dst: Optional[str] = None
+    # List of tags for the output file.
+    tags: Optional[List[str]] = None
 
 
 @dataclass
@@ -188,12 +186,14 @@ class DockerOp:
         self.commands = doc["commands"]
         # The following elements are optional.
         self.env = doc.get("env", {})
+        in_files = doc.get("files", {}).get("inputs", [])
+        out_files = doc.get("files", {}).get("outputs", [])
         self.files = OperatorFiles(
             inputs=[
-                InputFile(src=obj["src"], type=obj["type"], dst=obj["dst"]) for obj in doc.get("files", {}).get("inputs", [])
+                InputFile(src=obj["src"], type=obj["type"], dst=obj["dst"]) for obj in in_files
             ],
             outputs=[
-                OutputFile(src=obj["src"], type=obj["type"], dst=obj["dst"]) for obj in doc.get("files", {}).get("outputs", [])
+                OutputFile(src=obj["src"], type=obj["type"], dst=obj.get("dst"), tags=obj.get("tags", [])) for obj in out_files
             ]
         )
         self.parameters = [

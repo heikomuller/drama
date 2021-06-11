@@ -5,8 +5,7 @@ external (Docker) operators and run a workflow composed of the operators.
 It will clone the GitHub repository containing the operator specifications and
 then run a workflow that consist of three steps:
 
-1) Download text files with common male and femal first names and combine them
-   into a single output file.
+1) Download text files with common male and femal first names.
 2) Take a random sample of names from the downloaded data.
 3) Write greeting phrase for each name in the sample file.
 
@@ -33,7 +32,7 @@ def main(outputdir: Path, sample_size: int, random_state: int, greeting: str, sl
     # Define workflow using the given arguments to parameterize the workflow run.
     workflow = [
         ("DownloadNames", {}),
-        ("NamesSample", {"size": sample_size, "randomState": random_state}),
+        ("SampleNames", {"size": sample_size, "randomState": random_state}),
         ("SayHello", {"greeting": greeting, "sleeptime": sleeptime})
     ]
     # Execute the workflow step in sequential order using the generic executor

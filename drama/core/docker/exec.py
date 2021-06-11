@@ -10,7 +10,7 @@ contains the specification of registered operators. The generic executor receive
 the operation identifier as one of the input arguments and retrieves the
 specification for the operator from the registry.
 
-Another assumption is that there are three types of 'storage' available to the
+Another assumption is that there are two types of 'storage' available to the
 process (i.e., the workflow run). These storages are identified by the following
 schema names:
 
@@ -20,11 +20,6 @@ schema names:
 - *rundir*: Each workflow run has a dedicated run directory where those files
   are stored that are generated during the workflow run and that are kept
   as the workflow result after the workflow run finishes.
-- *context*: Volatile storage for intermediate files that are generated and used
-  by different workflow steps. The context represents the upstream/downstream
-  flow of data files during workflow execution. The files in the context that
-  are not moved to the global store or the workflow run folder will be deleted
-  at the end of a successful workflow run.
 """
 
 from pathlib import Path
@@ -113,11 +108,14 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     -------
     Resource
     """
-    if file.src.startswith('context::'):
-        tag = file.src[len('context::'):]
+    if '::' not in file.src:
+        tag = file.src
         # SUGGESTION: Add methods to query upstream resources by type and/or
         # name/tag.
-        resource = pcs.find_one_upstream(query=tag)
+        resource = pcs.upstream_one(query=tag)
+    elif file.src.startswith('tag::'):
+        tag = file.src[len('tag::'):]
+        resource = pcs.upstream_one(query=tag)
     elif file.src.startswith('store::'):
         # Load a resource from the global data store.
         name = file.src[len('store::'):]
@@ -223,19 +221,22 @@ def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[R
     """
     resources = list()
     filepath = run.localpath(file.src)
-    for dst in file.dst:
-        if dst.startswith("store::"):
+    # Copy file to persistent storage if a destination is specified.
+    if file.dst:
+        if file.dst.startswith("store::"):
             # TODO: How to specify the target path for the stored file?
-            dst = dst[len("store::"):]
+            dst = file.dst[len("store::"):]
             resource = pcs.storage.glob.put_file(src=filepath, dst=dst)
-        elif dst.startswith("context::"):
-            resource = LocalResource(resource=str(filepath))
-            tag = dst[len("context::"):]
-            pcs.to_downstream(resource=resource, tag=tag)
-        elif dst.startswith("rundir::"):
-            dst = dst[len("rundir::"):]
+        elif file.dst.startswith("rundir::"):
+            dst = file.dst[len("rundir::"):]
             resource = pcs.storage.run.put_file(src=filepath, dst=dst)
         else:
-            raise ValueError(f"invalid destination path '{dst}'")
+            raise ValueError(f"invalid destination path '{file.dst}'")
+        resources.append(resource)
+    # Add file as tagged resource to the workflow context if any tags are given.
+    if file.tags:
+        resource = LocalResource(resource=str(filepath))
+        for tag in file.tags:
+            pcs.to_downstream(resource=resource, tag=tag)
         resources.append(resource)
     return resources

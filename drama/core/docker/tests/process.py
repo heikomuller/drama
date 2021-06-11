@@ -20,7 +20,7 @@ class PCS:
         """
         self._context.append((resource, tag))
 
-    def find_one_upstream(self, query: str) -> Resource:
+    def upstream_one(self, query: str) -> Resource:
         """
         Query the process context to get a resource based on its tag name.
         """
