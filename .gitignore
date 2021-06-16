@@ -47,3 +47,6 @@ dmypy.json
 # Log history
 *.log
 *.log.*
+
+# Default volumes when running drama using Docker
+volumes/
