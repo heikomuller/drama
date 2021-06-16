@@ -18,28 +18,37 @@ from drama.models.workflow import WorkflowRequest
 from drama.worker import run
 
 
-def main(sample_size: int, random_state: int, greeting: str, sleeptime: float):
+def main(gender: str, sample_size: int, random_state: int, greeting: str, sleeptime: float):
     """
     Run the Hello World workflow using the generic executor for workflow
     operators that are executed using Docker.
     """
     # Define the three-step workflow that (i) downloads the names file, (ii)
     # takes a random sample of names, and (iii) prints a greeting phrase for
-    # each name in the sample.
+    # each name in the sample. The operator for the first step depends on the
+    # value for the gender parameter.
+    if gender == "female":
+        download_op = "DownloadFemaleNames"
+    elif gender == "male":
+        download_op = "DownloadMaleNames"
+    else:
+        download_op = "DownloadAllNames"
     task_download = TaskRequest(
         name="DownloadNames",
         module="drama.core.docker.exec",
-        params={"op": "DownloadNames"}
+        params={"op": download_op}
     )
     task_sample = TaskRequest(
         name="SampleNames",
         module="drama.core.docker.exec",
-        params={"op": "SampleNames", "size": sample_size, "randomState": random_state}
+        params={"op": "SampleNames", "size": sample_size, "randomState": random_state},
+        inputs={"NamesFile": "DownloadNames.TempFile"}
     )
     task_say_hello = TaskRequest(
         name="SayHello",
         module="drama.core.docker.exec",
-        params={"op": "SayHello", "greeting": greeting, "sleeptime": sleeptime}
+        params={"op": "SayHello", "greeting": greeting, "sleeptime": sleeptime},
+        inputs={"SampleFile": "SampleNames.TempFile"}
     )
     workflow = WorkflowRequest(
         tasks=[
@@ -58,9 +67,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-g", "--greeting", default='Hello', required=False)
-    parser.add_argument("-r", "--rand", required=False)
+    parser.add_argument("-r", "--rand", type=int, required=False)
     parser.add_argument("-s", "--size", default=10, type=int, required=False)
     parser.add_argument("-t", "--sleeptime", default=1.0, type=float, required=False)
+    parser.add_argument("-x", "--gender", required=False)
 
     parsed_args = parser.parse_args(args)
 
@@ -68,5 +78,6 @@ if __name__ == '__main__':
         sample_size=parsed_args.size,
         random_state=parsed_args.rand,
         greeting=parsed_args.greeting,
-        sleeptime=parsed_args.sleeptime
+        sleeptime=parsed_args.sleeptime,
+        gender=parsed_args.gender
     )

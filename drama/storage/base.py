@@ -116,7 +116,7 @@ class Storage(ABC):
         """
         Create a new temporary folder for a Docker run.
         """
-        filepath = Path(self.local_dir, str(uuid.uuid4()).replace('-', ''))
+        filepath = Path(self.local_dir, str(uuid.uuid4().hex))
         filepath.mkdir()
         self._tmpdirs.append(filepath)
         return filepath

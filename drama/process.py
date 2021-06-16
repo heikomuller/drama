@@ -177,12 +177,12 @@ class Process(BaseProcess):
             servo=Servo.AVRO,
         )
 
-        self.debug([f"Sending {message_key} to downstream"])
-        self._send(message)
-
         # Add to context if tagged.
         if tag is not None:
             self._context.append((data, tag))
+
+        self.debug([f"Sending {message_key} to downstream"])
+        self._send(message)
 
         return message
 
