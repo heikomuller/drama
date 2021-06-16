@@ -66,7 +66,7 @@ class BaseProcess:
         self.logging_file = tempfile.NamedTemporaryFile(dir=storage.temp_dir)
 
     @abstractmethod
-    def to_downstream(self, data: DataType) -> Message:
+    def to_downstream(self, data: DataType, tag: Optional[str] = None) -> Message:
         pass
 
     @abstractmethod
@@ -152,8 +152,10 @@ class Process(BaseProcess):
         self.logger = get_logger(__name__, name=name)
         # Catalog for registered Docker operators.
         self.catalog = PersistentRegistry()
+        # Keep track of tagged resources.
+        self._context = list()
 
-    def to_downstream(self, data: DataType) -> Message:
+    def to_downstream(self, data: DataType, tag: Optional[str] = None) -> Message:
         """
         Sends block-like message thought Kafka topic.
         Data is serialized using self-contained schema.
@@ -177,6 +179,10 @@ class Process(BaseProcess):
 
         self.debug([f"Sending {message_key} to downstream"])
         self._send(message)
+
+        # Add to context if tagged.
+        if tag is not None:
+            self._context.append((data, tag))
 
         return message
 
@@ -286,6 +292,15 @@ class Process(BaseProcess):
             messages.setdefault(message_key, []).append(message)
 
         return messages
+
+    def upstream_one(self, query: str) -> DataType:
+        """
+        Query the process context to get a resource based on its tag name.
+        """
+        for resource, tag in self._context:
+            if tag == query:
+                return resource
+        raise ValueError(f"unknown resource {query}")
 
     def close(self, force_interruption: bool = False, remove_local_dir: bool = False) -> Resource:
         """

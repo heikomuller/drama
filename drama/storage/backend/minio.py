@@ -83,7 +83,7 @@ class MinIOStorage(Storage):
             raise NotValidScheme("Object file prefix is invalid: expected `minio://`")
 
         # remove scheme and deconstruct path
-        bucket_name, object_name = data_file[len("minio://") :].split("/", 1)
+        bucket_name, object_name = data_file[len("minio://"):].split("/", 1)
 
         # todo to this point, `bucket_name` should be task parent id
         # todo  otherwise, this file doesn't belong to this workflow

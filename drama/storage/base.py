@@ -1,5 +1,7 @@
 import os
 import shutil
+import uuid
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional, Union
@@ -47,6 +49,8 @@ class Storage(ABC):
 
         self.temp_dir = settings.DATA_DIR
         self.local_dir = Path(self.temp_dir, self.bucket_name, self.folder_name)
+        # Keep track of temporary directories for cleanup.
+        self._tmpdirs = list()
 
     def setup(self) -> LocalResource:
         """
@@ -107,3 +111,19 @@ class Storage(ABC):
         :param omit_files: List of filenames to keep.
         """
         pass
+
+    def tmpdir(self) -> Path:
+        """
+        Create a new temporary folder for a Docker run.
+        """
+        filepath = Path(self.local_dir, str(uuid.uuid4()).replace('-', ''))
+        filepath.mkdir()
+        self._tmpdirs.append(filepath)
+        return filepath
+
+    def cleanup(self):
+        """
+        Erase all temporary folders that were created.
+        """
+        for filepath in self._tmpdirs:
+            shutil.rmtree(filepath)

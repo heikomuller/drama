@@ -26,8 +26,11 @@ from pathlib import Path
 from string import Template
 from typing import Any, Dict, List
 
+import shutil
+
 from drama.core.docker.registry import OpParameter, DockerOp, InputFile, OutputFile
 from drama.core.docker.run import DockerRun
+from drama.core.model import TempFile
 from drama.models.task import TaskResult
 from drama.process import Process
 from drama.storage.backend.local import LocalResource
@@ -84,8 +87,8 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
         raise Exception('\n'.join(result.logs))
     files = list()
     for file in task.files.outputs:
-        resources = handle_result_file(pcs=pcs, run=run, file=file)
-        files.extend(resources)
+        resource = handle_result_file(pcs=pcs, run=run, file=file)
+        files.append(resource)
     return TaskResult(files=files)
 
 
@@ -119,18 +122,11 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     elif file.src.startswith('store::'):
         # Load a resource from the global data store.
         name = file.src[len('store::'):]
-        resource = pcs.storage.glob.get_file(name)
+        resource = pcs.storage.get_file(name)
     elif file.src.startswith('rundir::'):
         # Load a resource from the specific run folder for this workflow run.
-        name = file.src[len('rundir::'):]
-        resource = pcs.storage.run.get_file(name)
-    elif file.src.startswith('url::'):
-        # TODO: Not sure if this should be part of a workflow step specification
-        # or implemented using a separate ImportFile actor. One could use some
-        # form of reasoning over the workflow specification that would modify
-        # the workflow to insert such an import step if an url as input is
-        # detected and the file has not been downloaded previously.
-        pass
+        name = Path(pcs.storage.local_dir, file.src[len('rundir::'):])
+        resource = LocalResource(resource=name)
     else:
         raise ValueError(f"invalid source file specification '{file.src}'")
     # Raise error if the resource was not found. This could also be part of the
@@ -217,26 +213,26 @@ def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[R
 
     Returns
     -------
-    list of Resource
+    Resource
     """
-    resources = list()
     filepath = run.localpath(file.src)
     # Copy file to persistent storage if a destination is specified.
     if file.dst:
         if file.dst.startswith("store::"):
-            # TODO: How to specify the target path for the stored file?
+            # Copy file to the process store.
             dst = file.dst[len("store::"):]
-            resource = pcs.storage.glob.put_file(src=filepath, dst=dst)
+            resource = pcs.storage.put_file(file_path=filepath, rename=dst)
         elif file.dst.startswith("rundir::"):
-            dst = file.dst[len("rundir::"):]
-            resource = pcs.storage.run.put_file(src=filepath, dst=dst)
+            dst = Path(pcs.storage.local_dir, file.dst[len("rundir::"):])
+            resource = LocalResource(resource=str(dst))
+            shutil.copy2(src=filepath, dst=dst)
         else:
             raise ValueError(f"invalid destination path '{file.dst}'")
-        resources.append(resource)
+    else:
+        # Create a temporary resource for the file.
+        resource = TempFile(resource=str(dst))
     # Add file as tagged resource to the workflow context if any tags are given.
     if file.tags:
-        resource = LocalResource(resource=str(filepath))
         for tag in file.tags:
-            pcs.to_downstream(resource=resource, tag=tag)
-        resources.append(resource)
-    return resources
+            pcs.to_downstream(data=TempFile(resource=resource), tag=tag)
+    return resource

@@ -1,5 +1,7 @@
 from .actor import process_failure, process_running, process_succeeded, process_task
 from .executor import execute, execute_task, revoke
+from .monitor import run
+
 
 __all__ = [
     "process_task",
@@ -9,4 +11,5 @@ __all__ = [
     "execute",
     "revoke",
     "execute_task",
+    "run"
 ]
