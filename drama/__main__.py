@@ -25,6 +25,9 @@ def get_parser():
     subparsers.required = True
 
     subparsers.add_parser("worker", help="Spawn multiple concurrent workers")
+    regparser = subparsers.add_parser("register", help="Register workflow operators")
+    regparser.add_argument("-s", "--source", required=True)
+    regparser.add_argument("-f", "--specfile", default="drama.yaml", required=False)
     subparsers.add_parser("server", help="Deploy server")
 
     return parser
@@ -39,6 +42,12 @@ def cli():
         setattr(dramatiq_ns, "broker", "drama.worker.actor")
 
         dramatiq_cli(dramatiq_ns)
+    elif args.command == "register":
+        from drama.core.docker.registry import PersistentRegistry
+        ops = PersistentRegistry().register(source=args.source, specfile=args.specfile)
+        print("\nSuccessfully registered the following operators:")
+        for op_id in ops:
+            print(f'- {op_id}')
     elif args.command == "server":
         from drama.api.app import run_server
 

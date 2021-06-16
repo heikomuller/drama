@@ -103,6 +103,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from pymongo.database import Database
 from typing import Any, Dict, List, Optional
 
 import git
@@ -110,6 +111,7 @@ import tempfile
 import yaml
 
 from drama.core.docker.build import docker_build_py
+from drama.manager import BaseManager
 
 
 # -- Operator specifications --------------------------------------------------
@@ -250,7 +252,7 @@ class OpRegistry(ABC):
         """
         pass
 
-    def register(self, source: str, specfile: Optional[str] = "drama.yaml"):
+    def register(self, source: str, specfile: Optional[str] = None) -> List[str]:
         """
         Register external operators implemented by the files in a given source
         folder, and a specification file.
@@ -260,18 +262,29 @@ class OpRegistry(ABC):
         the repository will be cloned and the specified operators added to the
         registry.
 
+        The ``specfile`` argument allows to specify the document (relative to
+        the source) that contains the operator specification. If not given, the
+        default specification file ``drama.yaml`` is assumed.
+
         If the specification contains the definition of Docker images these
         images will be build locally.
+
+        Returns the identifier of the registered operators.
 
         Parameters
         ----------
         source: str
             Reference to a folder on the local file system or a Git repository.
-        specfile: string, default="drama.yaml"
+        specfile: string, default=None
             Relative path to the specification file in the source folder.
+
+        Returns
+        -------
+        list of string
         """
+        registered_ops = list()
         with clone(source) as sourcedir:
-            specfilepath = Path(sourcedir, specfile)
+            specfilepath = Path(sourcedir, specfile if specfile else "drama.yaml")
             with specfilepath.open("rt") as f:
                 doc = yaml.load(f, Loader=yaml.FullLoader)
             # Build any Docker images that are specified in the document.
@@ -285,7 +298,83 @@ class OpRegistry(ABC):
                     )
             # Add specifications for external operators.
             for obj in doc.get("operators", []):
-                self.put_op(identifier=obj['name'], spec=obj)
+                op_id = obj['name']
+                self.put_op(identifier=op_id, spec=obj)
+                registered_ops.append(op_id)
+        return registered_ops
+
+
+class PersistentRegistry(BaseManager, OpRegistry):
+    """
+    Implementation for the operator registry that maintains all operators in the
+    database (MongoDB) that is used by drama.
+    """
+    def __init__(self, db: Optional[Database] = None):
+        """
+        Initialize the database connection.
+
+        If a source is given the operators that are defined in the sources'
+        specification file will be registered with the initialized registry.
+
+        Parameters
+        ----------
+        source: str, default=None
+            Reference to a folder on the local file system or a Git repository.
+        specfile: string, default="drama.yaml"
+            Relative path to the specification file in the source folder.
+        """
+        super().__init__(db=db)
+
+    def get_op(self, identifier: str) -> DockerOp:
+        """
+        Get the operator specification for an external operator that has been
+        registered under the given identifier.
+
+        Raises a ValueError if the given identifier is unknown.
+
+        Parameters
+        ----------
+        identifier: string
+            Unique operation identifier
+
+        Returns
+        -------
+        DockerOp
+        """
+        doc = self.database.catalog.find_one({'opId': identifier})
+        if doc is None:
+            raise ValueError(f"unknown operator '{identifier}'")
+        return DockerOp(doc=doc['spec'])
+
+    def put_op(self, identifier: str, spec: Dict):
+        """
+        Add specification for a new operator to the registry.
+
+        The operator is registered under the given identifier. If an operator
+        with that identifier already exists, a ValueError is raised.
+
+        The specification ``spec`` contains the lists of input and output files
+        for the operator, the additional (user-provided) parameter values, and
+        the command line statements for execution within a Docker container.
+
+        Parameters
+        ----------
+        identifier: string
+            Unique operator identifier.
+        spec: dict
+            Specification of the operator inputs, outputs, parameters, and
+            command line statements for execution within a Docker container.
+        """
+        # Raise an error if a document with the given identifier exists. Note
+        # that this is not executed inside a transaction so that there can be
+        # situations in which different operators may still be inserted under
+        # the same identifier.
+        if self.database.catalog.find_one({'opId': identifier}) is not None:
+            raise ValueError(f"operator '{identifier}' exists")
+        self.database.catalog.insert_one({
+            'opId': identifier,
+            'spec': spec
+        })
 
 
 class VolatileRegistry(OpRegistry):
@@ -385,7 +474,7 @@ def clone(source: str) -> str:
         yield source
     else:
         sourcedir = tempfile.mkdtemp()
-        print('cloning into {}'.format(sourcedir))
+        print(f'cloning {source} into {sourcedir}')
         try:
             git.Repo.clone_from(source, sourcedir)
             yield sourcedir
