@@ -313,15 +313,10 @@ class PersistentRegistry(BaseManager, OpRegistry):
         """
         Initialize the database connection.
 
-        If a source is given the operators that are defined in the sources'
-        specification file will be registered with the initialized registry.
-
         Parameters
         ----------
-        source: str, default=None
-            Reference to a folder on the local file system or a Git repository.
-        specfile: string, default="drama.yaml"
-            Relative path to the specification file in the source folder.
+        db: str, Database=None
+            Optional database to override the default database.
         """
         super().__init__(db=db)
 

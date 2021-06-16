@@ -13,7 +13,6 @@ class BaseManager(ABC):
     """
 
     def __init__(self, db: Optional[Database] = None):
-        print('you called me')
         self.database = db or get_db_connection()
 
 

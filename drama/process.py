@@ -8,6 +8,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 from kafka import KafkaConsumer, KafkaProducer
 
 from drama.config import settings
+from drama.core.docker.registry import PersistentRegistry
 from drama.datatype import DataType, get_dict, get_schema
 from drama.logger import get_logger
 from drama.models.messages import Message, MessageType, Servo, SignalMessage, SignalType
@@ -149,6 +150,8 @@ class Process(BaseProcess):
     ):
         super().__init__(name, module, parent, params, inputs, storage)
         self.logger = get_logger(__name__, name=name)
+        # Catalog for registered Docker operators.
+        self.catalog = PersistentRegistry()
 
     def to_downstream(self, data: DataType) -> Message:
         """
