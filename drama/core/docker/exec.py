@@ -105,7 +105,9 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
         image=task.image,
         commands=commands,
         bind_dirs=True,
-        env=task.env
+        env=task.env,
+        workflow_id=pcs.parent,
+        registry=pcs.containers
     )
     # -- Persist result files and make them available for downstream tasks ----
     # Raise error if the run was not successful.

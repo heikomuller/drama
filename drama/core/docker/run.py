@@ -15,6 +15,7 @@ import docker
 import shutil
 
 from drama.core.docker.base import Pathname, stacktrace
+from drama.core.docker.registry import ContainerRegistry
 
 
 @dataclass
@@ -252,15 +253,16 @@ class DockerRun:
         shutil.rmtree(self.basedir)
 
     def exec(
-        self, image: str, commands: Union[str, List[str]],
-        env: Optional[Dict] = None, bind_dirs: Optional[bool] = False,
-        remove: Optional[bool] = True
+        self, image: str, commands: Union[str, List[str]], env: Optional[Dict] = None,
+        bind_dirs: Optional[bool] = False, remove: Optional[bool] = True,
+        workflow_id: Optional[str] = None, registry: Optional[ContainerRegistry] = None
     ) -> ExecResult:
         """
         Execute one or more commands in a Docker container for the prepared
         Docker run.
 
-        Returns ...
+        Returns a result object with the return code and logs for the executed
+        container.
 
         Parameters
         ----------
@@ -276,6 +278,13 @@ class DockerRun:
             the container. Equivalent to calling ``bind_dirs()``.
         remove: bool, default=True
             Remove Docker container after it finished running.
+        workflow_id: str, default=None
+            Optional identifier for the workflow if the container is executed as
+            a task in that workflow.
+        registry: ContainerRegistry, default=None
+            Registry for running containers. Only set if the container runs
+            inside a workflow task. If given, the workflow identifier is
+            expected to be not None.
 
         Returns
         -------
@@ -304,9 +313,16 @@ class DockerRun:
                     environment=env,
                     detach=True
                 )
+                # Add container identifier to the registry for running Docker
+                # containers.
+                if registry:
+                    registry.insert(workflow=workflow_id, container=container.id)
                 # Wait for container to finish. The returned dictionary will
                 # contain the container's exit code ('StatusCode').
                 r = container.wait()
+                # Remove containe registry entry.
+                if registry:
+                    registry.remove(workflow=workflow_id, container=container.id)
                 # Add container logs to the logs for the Docker run.
                 logs = container.logs()
                 if logs:

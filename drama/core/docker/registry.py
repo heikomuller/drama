@@ -474,6 +474,59 @@ class VolatileRegistry(OpRegistry):
         self._operators[identifier] = DockerOp(doc=spec)
 
 
+# -- Container registry -------------------------------------------------------
+
+class ContainerRegistry(BaseManager):
+    """
+    Registry that maintains a record for running Docker containers. Stores the
+    workflow identifier and the container identifier. If a workflow is canceled
+    the registry provides information about running Docker containers for the
+    workflow that need to be stopped.
+    """
+    def __init__(self, db: Optional[Database] = None):
+        """
+        Initialize the database connection.
+
+        Parameters
+        ----------
+        db: str, Database=None
+            Optional database to override the default database.
+        """
+        super().__init__(db=db)
+
+    def insert(self, workflow: str, container: str):
+        """
+        Insert a new record into the registry.
+
+        Parameters
+        ----------
+        workflow: string
+            Unique workflow identifier.
+        container: string
+            Unique container identifier
+        """
+        self.database.containers.insert_one({
+            "workflow": workflow,
+            "container": container
+        })
+
+    def remove(self, workflow: str, container: str):
+        """
+        Remove a record from the registry.
+
+        Parameters
+        ----------
+        workflow: string
+            Unique workflow identifier.
+        container: string
+            Unique container identifier
+        """
+        self.database.containers.delete_one({
+            "workflow": workflow,
+            "container": container
+        })
+
+
 @contextmanager
 def clone(source: str) -> str:
     """

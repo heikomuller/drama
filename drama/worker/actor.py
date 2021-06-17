@@ -56,6 +56,7 @@ def process_task(task_request: dict):
 
     # create process
     task_process = Process(
+        task_id=task_id,
         name=task_name,
         module=task_module,
         parent=task_parent,

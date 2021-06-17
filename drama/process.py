@@ -8,7 +8,8 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 from kafka import KafkaConsumer, KafkaProducer
 
 from drama.config import settings
-from drama.core.docker.registry import PersistentRegistry
+from drama.core.docker.registry import ContainerRegistry, PersistentRegistry
+from drama.database import get_db_connection
 from drama.datatype import DataType, get_dict, get_schema
 from drama.logger import get_logger
 from drama.models.messages import Message, MessageType, Servo, SignalMessage, SignalType
@@ -32,6 +33,7 @@ class BaseProcess:
 
     def __init__(
         self,
+        task_id: str,
         name: str,
         module: str,
         parent: str,
@@ -44,6 +46,7 @@ class BaseProcess:
         :param module: Task module.
         :param parent: Parent task id.
         """
+        self.task_id = task_id
         self.name = name
         self.module = module
         self.parent = parent
@@ -141,6 +144,7 @@ class Process(BaseProcess):
 
     def __init__(
         self,
+        task_id: str,
         name: str,
         module: str,
         parent: str,
@@ -148,10 +152,12 @@ class Process(BaseProcess):
         inputs: Optional[Dict[str, str]] = None,
         storage: Optional[Storage] = None,
     ):
-        super().__init__(name, module, parent, params, inputs, storage)
+        super().__init__(task_id, name, module, parent, params, inputs, storage)
         self.logger = get_logger(__name__, name=name)
-        # Catalog for registered Docker operators.
-        self.catalog = PersistentRegistry()
+        # Initialize components that interact with the database.
+        db = get_db_connection()
+        self.catalog = PersistentRegistry(db=db)
+        self.containers = ContainerRegistry(db=db)
 
     def to_downstream(self, data: DataType) -> Message:
         """
