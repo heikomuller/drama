@@ -36,19 +36,27 @@ def main(gender: str, sample_size: int, random_state: int, greeting: str, sleept
     task_download = TaskRequest(
         name="DownloadNames",
         module="drama.core.docker.exec",
-        params={"op": download_op}
+        params={"op": f"demo.hello-world.{download_op}"}
     )
     task_sample = TaskRequest(
         name="SampleNames",
         module="drama.core.docker.exec",
-        params={"op": "SampleNames", "size": sample_size, "randomState": random_state},
-        inputs={"NamesFile": "DownloadNames.TempFile"}
+        params={
+            "op": "demo.hello-world.SampleNames",
+            "size": sample_size,
+            "randomState": random_state
+        },
+        inputs={"namesFile": "DownloadNames.FileResource#namesFile"}
     )
     task_say_hello = TaskRequest(
         name="SayHello",
         module="drama.core.docker.exec",
-        params={"op": "SayHello", "greeting": greeting, "sleeptime": sleeptime},
-        inputs={"SampleFile": "SampleNames.TempFile"}
+        params={
+            "op": "demo.hello-world.SayHello",
+            "greeting": greeting,
+            "sleeptime": sleeptime
+        },
+        inputs={"namesFile": "SampleNames.FileResource#namesSampleFile"}
     )
     workflow = WorkflowRequest(
         tasks=[

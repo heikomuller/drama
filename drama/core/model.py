@@ -10,6 +10,11 @@ class TempFile(DataType):
 
 
 @dataclass
+class TextFile(DataType):
+    resource: Resource = is_string()
+
+
+@dataclass
 class CompressedFile(DataType):
     resource: Resource = is_string()
     file_format: str = is_string(".zip")

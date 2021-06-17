@@ -66,7 +66,7 @@ class BaseProcess:
         self.logging_file = tempfile.NamedTemporaryFile(dir=storage.temp_dir)
 
     @abstractmethod
-    def to_downstream(self, data: DataType, tag: Optional[str] = None) -> Message:
+    def to_downstream(self, data: DataType) -> Message:
         pass
 
     @abstractmethod
@@ -152,10 +152,8 @@ class Process(BaseProcess):
         self.logger = get_logger(__name__, name=name)
         # Catalog for registered Docker operators.
         self.catalog = PersistentRegistry()
-        # Keep track of tagged resources.
-        self._context = list()
 
-    def to_downstream(self, data: DataType, tag: Optional[str] = None) -> Message:
+    def to_downstream(self, data: DataType) -> Message:
         """
         Sends block-like message thought Kafka topic.
         Data is serialized using self-contained schema.
@@ -176,10 +174,6 @@ class Process(BaseProcess):
             schem=stringify_schema,
             servo=Servo.AVRO,
         )
-
-        # Add to context if tagged.
-        if tag is not None:
-            self._context.append((data, tag))
 
         self.debug([f"Sending {message_key} to downstream"])
         self._send(message)
@@ -297,10 +291,18 @@ class Process(BaseProcess):
         """
         Query the process context to get a resource based on its tag name.
         """
-        for resource, tag in self._context:
-            if tag == query:
-                return resource
-        raise ValueError(f"unknown resource {query}")
+        # Read inputs. Raise error if no inputs are given.
+        inputs = self.get_from_upstream()
+        if not inputs:
+            raise ValueError("no input file")
+
+        # Expects an excel dataset in the inputs. Raise error if the 'ExcelDataset' key
+        # is missing in the inputs dictionary.
+        if query not in inputs:
+            raise ValueError(f"missing resource '{query}' in inputs '{inputs.keys()}'")
+
+        print(f"inputs[{query}][0] = {inputs[query][0]}")
+        return inputs[query][0]
 
     def close(self, force_interruption: bool = False, remove_local_dir: bool = False) -> Resource:
         """

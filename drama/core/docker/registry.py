@@ -125,8 +125,6 @@ class InputFile:
     # the schema and the file identifier or file path. The file scheme can be
     # one of the following: 'store', 'rundir', or 'context'.
     src: str
-    # Not clear if this is needed!
-    type: str
     # Relative path specifying the file location inside the Docker container.
     dst: str
 
@@ -138,8 +136,8 @@ class OutputFile:
     """
     # Relative path specifying the file location inside the Docker container.
     src: str
-    # Not clear if this is needed!
-    type: str
+    # Some form of serialization for the file DataType.
+    datatype: Dict
     # List of target destinations where the output file will be stored and made
     # available to downstream operators. File destinations are specified as
     # URIs following the same format as input source files.
@@ -193,14 +191,23 @@ class DockerOp:
         out_files = doc.get("files", {}).get("outputs", [])
         self.files = OperatorFiles(
             inputs=[
-                InputFile(src=obj["src"], type=obj["type"], dst=obj["dst"]) for obj in in_files
+                InputFile(src=obj["src"], dst=obj["dst"]) for obj in in_files
             ],
             outputs=[
-                OutputFile(src=obj["src"], type=obj["type"], dst=obj.get("dst"), tags=obj.get("tags", [])) for obj in out_files
+                OutputFile(
+                    src=obj["src"],
+                    datatype=obj["datatype"],
+                    dst=obj.get("dst"),
+                    tags=obj.get("tags", [])
+                ) for obj in out_files
             ]
         )
         self.parameters = [
-            OpParameter(name=obj["name"], type=obj["type"], default=obj.get("default")) for obj in doc.get("parameters", [])
+            OpParameter(
+                name=obj["name"],
+                type=obj["type"],
+                default=obj.get("default")
+            ) for obj in doc.get("parameters", [])
         ]
 
 

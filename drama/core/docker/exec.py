@@ -22,19 +22,46 @@ schema names:
   as the workflow result after the workflow run finishes.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from string import Template
 from typing import Any, Dict, List
 
+import json
 import shutil
 
+from drama.datatype import DataType, is_string
 from drama.core.docker.registry import OpParameter, DockerOp, InputFile, OutputFile
 from drama.core.docker.run import DockerRun
-from drama.core.model import TempFile
+from drama.core.model import TempFile, TextFile
 from drama.models.task import TaskResult
 from drama.process import Process
 from drama.storage.backend.local import LocalResource
 from drama.storage.base import Resource
+
+
+@dataclass
+class FileResource(DataType):
+    """
+    Generic file resource for communication between workflow steps. This
+    resource is used to pass annotated (tagged) files between workflow steps.
+    The *semantic type annotation* for the resource is specified using the
+    ``tag`` property.
+
+    When referencing tagged files in workflow step input specification, the tag
+    is appended to the *FileResource* separated by a hash (``#``), i.e.,
+    ``upstreamTask.FileResource#tag``.
+    """
+    resource: str = is_string()
+    datatype: str = is_string()
+    tag: str = is_string()
+
+    @property
+    def key(self):
+        """
+        Append tag name to the default key for DataTypes.
+        """
+        return f"{super().key}#{self.tag}"
 
 
 def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
@@ -89,6 +116,7 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
     for file in task.files.outputs:
         resource = handle_result_file(pcs=pcs, run=run, file=file)
         files.append(resource)
+    run.erase()
     return TaskResult(files=files)
 
 
@@ -97,6 +125,10 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
 def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     """
     Copy an input file into the temporary folder for the Docker run.
+
+    Input files are either identified by a semantic tag or by a reference to
+    a file in the global data catalog. The latter are referenced by a prefix
+    of ``store::``.
 
     Parameters
     ----------
@@ -115,24 +147,28 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
         tag = file.src
         # SUGGESTION: Add methods to query upstream resources by type and/or
         # name/tag.
-        resource = pcs.upstream_one(query=tag)
-    elif file.src.startswith('tag::'):
-        tag = file.src[len('tag::'):]
-        resource = pcs.upstream_one(query=tag)
+        doc = pcs.upstream_one(query=tag)
+        datatype = json.loads(doc['datatype'])
+        uri = datatype['uri']
+        if uri == 'http://www.ontologies.khaos.uma.es/bigowl/TextFile':
+            resource = doc['resource']
+            if resource.startswith("minio://"):
+                # HACK ALERT: Is there any way to distinguish between files
+                # that are in the global data catalog and those on the local
+                # run directory?
+                resource = pcs.storage.get_file(resource)
+            resource = TextFile(resource=resource)
+        else:
+            # TODO: Add more types here. This should somehow query a database
+            # to retrieve information for creating the appropriate instance of
+            # the data class object for a resource.
+            raise ValueError(f"unknown data type '{uri}'")
     elif file.src.startswith('store::'):
         # Load a resource from the global data store.
         name = file.src[len('store::'):]
         resource = pcs.storage.get_file(name)
-    elif file.src.startswith('rundir::'):
-        # Load a resource from the specific run folder for this workflow run.
-        name = Path(pcs.storage.local_dir, file.src[len('rundir::'):])
-        resource = LocalResource(resource=name)
     else:
         raise ValueError(f"invalid source file specification '{file.src}'")
-    # Raise error if the resource was not found. This could also be part of the
-    # new query method.
-    if resource is None:
-        raise ValueError(f"unknown file '{file.src}'")
     # Copy file to temporary run directory.
     run.copy(src=resource.resource, dst=file.dst)
     return resource
@@ -202,6 +238,15 @@ def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[R
     """
     Copy result file to persistent storage and add to downstream results.
 
+    The idea here is that a file may either be copied to the global data store
+    (the data catalog that is available for all workflows) or to the directory
+    for the workflow run that will be persisted for a successful workflow run.
+    The different storage options are identifier by the prefix ``store::`` and
+    ``rundir::``.
+
+    The file will be available to downstream tasks only if at least one tag is
+    defined in the output file specification.
+
     Parameters
     ----------
     pcs: Process
@@ -234,5 +279,11 @@ def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[R
     # Add file as tagged resource to the workflow context if any tags are given.
     if file.tags:
         for tag in file.tags:
-            pcs.to_downstream(data=TempFile(resource=resource), tag=tag)
+            pcs.to_downstream(
+                data=FileResource(
+                    resource=resource.resource,
+                    datatype=json.dumps(file.datatype, default=str),
+                    tag=tag
+                )
+            )
     return resource
