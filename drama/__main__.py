@@ -46,7 +46,6 @@ def cli():
     if args.command == "worker":
         dramatiq_ns, _ = make_argument_parser().parse_known_args()
         setattr(dramatiq_ns, "broker", "drama.worker.actor")
-
         dramatiq_cli(dramatiq_ns)
     elif args.command == "register":
         # CLI command for registering new Docker operators from a source
@@ -62,7 +61,6 @@ def cli():
             print(f'- {op_id}')
     elif args.command == "server":
         from drama.api.app import run_server
-
         run_server()
 
 

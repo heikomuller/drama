@@ -1,10 +1,21 @@
 from abc import ABC
-from typing import Optional
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional, Set
 
 from pymongo.database import Database
 
 from drama.database import get_db_connection
+from drama.models.task import TaskStatus
 from drama.models.workflow import Task, Workflow
+
+
+@dataclass
+class WorkflowDescriptor:
+    workflow_id: str
+    status: str
+    last_update: datetime
 
 
 class BaseManager(ABC):
@@ -71,3 +82,49 @@ class WorkflowManager(BaseManager):
         )
 
         return workflow
+
+    def list_all(self, active: Optional[bool] = False) -> List[WorkflowDescriptor]:
+        """
+        Get a listing of all workflows in the database.
+
+        Returns a list of tuples containing the workflow identifier and the
+        workflow state. The state is derived from the state of the workflow
+        tasks.
+
+        If all tasks are in the same state that state is returned. Otherwise,
+        if one task is in state FAILED, the resulting state is FAILED. If no
+        task is in failed state the result is RUNNING.
+        """
+        workflows = defaultdict(list)
+        select_clause = {"_id": 0, "parent": 1, "status": 1, "updated_at": 1}
+        for doc in self.database.task.find({}, select_clause):
+            workflow_id = doc['parent']
+            workflows[workflow_id].append((doc['status'], doc['updated_at']))
+        result = list()
+        for key, value in workflows.items():
+            wf = WorkflowDescriptor(
+                workflow_id=key,
+                status=get_status({st for st, _ in value}),
+                last_update=max([ts for _, ts in value])
+            )
+            if not active or wf.status == TaskStatus.STATUS_RUNNING:
+                result.append(wf)
+        return result
+
+
+# -- Helper Functions
+
+def get_status(values: Set) -> str:
+    """
+    Get status of a workflow from the set of states of the workflow tasks.
+
+    If all tasks are in the same state that state is returned. Otherwise,
+    if one task is in state FAILED, the resulting state is FAILED. If no
+    task is in failed state the result is RUNNING.
+    """
+    if len(values) == 1:
+        return next(iter(values))
+    elif TaskStatus.STATUS_FAILED in values:
+        return TaskStatus.STATUS_FAILED
+    else:
+        return TaskStatus.STATUS_RUNNING
