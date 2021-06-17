@@ -33,6 +33,7 @@ def get_parser():
     regparser = subparsers.add_parser("register", help="Register workflow operators")
     regparser.add_argument("-s", "--source", required=True)
     regparser.add_argument("-f", "--specfile", default="drama.yaml", required=False)
+    regparser.add_argument("-r", "--replace", action='store_true', required=False)
     subparsers.add_parser("server", help="Deploy server")
 
     return parser
@@ -51,7 +52,11 @@ def cli():
         # CLI command for registering new Docker operators from a source
         # directory or GitHub repository.
         from drama.core.docker.registry import PersistentRegistry
-        ops = PersistentRegistry().register(source=args.source, specfile=args.specfile)
+        ops = PersistentRegistry().register(
+            source=args.source,
+            specfile=args.specfile,
+            replace=args.replace
+        )
         print("\nSuccessfully registered the following operators:")
         for op_id in ops:
             print(f'- {op_id}')

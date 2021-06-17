@@ -231,12 +231,14 @@ class OpRegistry(ABC):
         pass
 
     @abstractmethod
-    def put_op(self, identifier: str, spec: Dict):
+    def put_op(self, identifier: str, version: str, spec: Dict, replace: Optional[bool] = False):
         """
         Add specification for a new operator to the registry.
 
         Registers the operator under the given identifier. If an operator
-        with that identifier already exists, a ValueError is raised.
+        with that identifier already exists, it will be replaced if the
+        ``replace`` flag is *True* or a ValueError is raised if the flag is
+        *False*.
 
         The specification ``spec`` contains (i) the lists of input and output files
         for the operator, (ii) the additional (user-provided) parameter values, and
@@ -246,13 +248,17 @@ class OpRegistry(ABC):
         ----------
         identifier: string
             Unique operator identifier.
+        version: string
+            Operator version identifier.
         spec: dict
             Specification of the operator inputs, outputs, parameters, and
             command line statements for execution within a Docker container.
+        replace: bool, default=False
+            Replace existing operators if True.
         """
         pass
 
-    def register(self, source: str, specfile: Optional[str] = None) -> List[str]:
+    def register(self, source: str, specfile: Optional[str] = None, replace: Optional[bool] = False) -> List[str]:
         """
         Register external operators implemented by the files in a given source
         folder, and a specification file.
@@ -277,6 +283,8 @@ class OpRegistry(ABC):
             Reference to a folder on the local file system or a Git repository.
         specfile: string, default=None
             Relative path to the specification file in the source folder.
+        replace: bool, default=False
+            Replace existing operators if True.
 
         Returns
         -------
@@ -297,9 +305,11 @@ class OpRegistry(ABC):
                         files=[(sourcedir, f["src"], f["dst"]) for f in obj.get("files", [])]
                     )
             # Add specifications for external operators.
+            version = doc.get("version")
+            namespace = doc.get("namespace")
             for obj in doc.get("operators", []):
-                op_id = obj['name']
-                self.put_op(identifier=op_id, spec=obj)
+                op_id = f"{namespace}.{obj['name']}" if namespace else obj['name']
+                self.put_op(identifier=op_id, version=version, spec=obj, replace=replace)
                 registered_ops.append(op_id)
         return registered_ops
 
@@ -341,35 +351,47 @@ class PersistentRegistry(BaseManager, OpRegistry):
             raise ValueError(f"unknown operator '{identifier}'")
         return DockerOp(doc=doc['spec'])
 
-    def put_op(self, identifier: str, spec: Dict):
+    def put_op(self, identifier: str, version: str, spec: Dict, replace: Optional[bool] = False):
         """
         Add specification for a new operator to the registry.
 
-        The operator is registered under the given identifier. If an operator
-        with that identifier already exists, a ValueError is raised.
+        Registers the operator under the given identifier. If an operator
+        with that identifier already exists, it will be replaced if the
+        ``replace`` flag is *True* or a ValueError is raised if the flag is
+        *False*.
 
-        The specification ``spec`` contains the lists of input and output files
-        for the operator, the additional (user-provided) parameter values, and
-        the command line statements for execution within a Docker container.
+        The specification ``spec`` contains (i) the lists of input and output files
+        for the operator, (ii) the additional (user-provided) parameter values, and
+        (iii) the command line statements for running the operator in a Docker container.
 
         Parameters
         ----------
         identifier: string
             Unique operator identifier.
+        version: string
+            Operator version identifier.
         spec: dict
             Specification of the operator inputs, outputs, parameters, and
             command line statements for execution within a Docker container.
+        replace: bool, default=False
+            Replace existing operators if True.
         """
-        # Raise an error if a document with the given identifier exists. Note
-        # that this is not executed inside a transaction so that there can be
-        # situations in which different operators may still be inserted under
-        # the same identifier.
-        if self.database.catalog.find_one({'opId': identifier}) is not None:
-            raise ValueError(f"operator '{identifier}' exists")
-        self.database.catalog.insert_one({
-            'opId': identifier,
-            'spec': spec
-        })
+        doc = {'opId': identifier, 'spec': spec, 'version': version}
+        # Check if an operator with the given identifier exists. Note that this
+        # is not executed inside a transaction so that there can be situations
+        # in which different operators may still be inserted under the same
+        # identifier.
+        query = {'opId': identifier}
+        if self.database.catalog.find_one(query) is not None:
+            if not replace:
+                # Raise an error if a document with the given identifier exists
+                # and the replace flag is False.
+                raise ValueError(f"operator '{identifier}' exists")
+            # Otherwise, replace the existing document.\
+            self.database.catalog.update_one(query, {"$set": doc})
+        else:
+            # Insert a new operator.
+            self.database.catalog.insert_one(doc)
 
 
 class VolatileRegistry(OpRegistry):
@@ -415,26 +437,32 @@ class VolatileRegistry(OpRegistry):
             raise ValueError(f"unknown operator '{identifier}'")
         return self._operators[identifier]
 
-    def put_op(self, identifier: str, spec: Dict):
+    def put_op(self, identifier: str, version: str, spec: Dict, replace: Optional[bool] = False):
         """
         Add specification for a new operator to the registry.
 
-        The operator is registered under the given identifier. If an operator
-        with that identifier already exists, a ValueError is raised.
+        Registers the operator under the given identifier. If an operator
+        with that identifier already exists, it will be replaced if the
+        ``replace`` flag is *True* or a ValueError is raised if the flag is
+        *False*.
 
-        The specification ``spec`` contains the lists of input and output files
-        for the operator, the additional (user-provided) parameter values, and
-        the command line statements for execution within a Docker container.
+        The specification ``spec`` contains (i) the lists of input and output files
+        for the operator, (ii) the additional (user-provided) parameter values, and
+        (iii) the command line statements for running the operator in a Docker container.
 
         Parameters
         ----------
         identifier: string
             Unique operator identifier.
+        version: string
+            Operator version identifier.
         spec: dict
             Specification of the operator inputs, outputs, parameters, and
             command line statements for execution within a Docker container.
+        replace: bool, default=False
+            Replace existing operators if True.
         """
-        if identifier in self._operators:
+        if identifier in self._operators and not replace:
             raise ValueError(f"operator '{identifier}' exists")
         self._operators[identifier] = DockerOp(doc=spec)
 
