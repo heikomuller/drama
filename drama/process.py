@@ -33,7 +33,6 @@ class BaseProcess:
 
     def __init__(
         self,
-        task_id: str,
         name: str,
         module: str,
         parent: str,
@@ -144,7 +143,6 @@ class Process(BaseProcess):
 
     def __init__(
         self,
-        task_id: str,
         name: str,
         module: str,
         parent: str,
