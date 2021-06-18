@@ -41,7 +41,8 @@ def run(
     wf = execute(workflow)
     # Monitor workflow state while the workflow is active.
     while True:
-        # The poll_interval determines the frequency with which the workflow state is polled
+        # The poll_interval determines the frequency with which the workflow
+        # state is polled
         time.sleep(poll_interval)
         tasks = TaskManager().find({"parent": wf.id})
         # Print status of workflow tasks to STDOUT if the verbose flag is True.
@@ -49,13 +50,15 @@ def run(
             status = "".join([f"({t.name}={t.status})" for t in tasks])
             ts = datetime.now().isoformat()[:19]
             print(f"{wf.id}@{ts}: {status}")
-        # Check status of all tasks. The workflow is considered done, if (i) one of the tasks failed, or (ii) all
-        # tasks are done.
+        # Check status of all tasks. The workflow is considered done, if
+        # (i) one of the tasks failed, or (ii) all tasks are done.
         is_done = True
         for task in tasks:
             if task.status == TaskStatus.STATUS_FAILED:
                 # Revoke the workflow to avoid that there are any pending tasks.
-                revoke(wf.id)
+                # Make sure that the workflow is not already revoked.
+                if "RevokeExecution" not in [t.name for t in tasks]:
+                    revoke(wf.id)
                 if raise_error:
                     raise RuntimeError(task.result.message)
                 break

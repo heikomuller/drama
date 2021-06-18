@@ -541,6 +541,22 @@ class ContainerRegistry(BaseManager):
         """
         super().__init__(db=db)
 
+    def find_all(self, workflow: str) -> List[str]:
+        """
+        Get list of all containers that are associated with a given workflow.
+
+        Parameters
+        ----------
+        workflow: string
+            Unique workflow identifier.
+
+        Returns
+        -------
+        list of string
+        """
+        query = {"workflow": workflow}
+        return [doc['container'] for doc in self.database.containers.find(query)]
+
     def insert(self, workflow: str, container: str):
         """
         Insert a new record into the registry.

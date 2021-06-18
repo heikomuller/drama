@@ -8,7 +8,7 @@ import yaml as yml
 
 from drama.core.docker.registry import PersistentRegistry
 from drama.manager import TaskManager, WorkflowManager
-from drama.worker import revoke
+from drama.worker import cancel, revoke
 
 
 # -- Operator registry --------------------------------------------------------
@@ -84,6 +84,13 @@ cli_pm.add_command(show_operator)
 
 # -- Workflow Commands --------------------------------------------------------
 
+@click.command(name='cancel')
+@click.argument('workflow_id')
+def cancel_workflow(workflow_id):
+    """Cancel workflow."""
+    cancel(workflow_id)
+
+
 @click.command(name='list')
 @click.option(
     '-r',
@@ -137,6 +144,7 @@ def cli_workflows():
     pass
 
 
+cli_workflows.add_command(cancel_workflow)
 cli_workflows.add_command(list_workflows)
 cli_workflows.add_command(show_workflow)
 cli_workflows.add_command(revoke_workflow)

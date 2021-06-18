@@ -1,9 +1,13 @@
-import uuid
 from datetime import datetime
+from pymongo.database import Database
+from typing import Optional
 
 import dramatiq
+import docker
+import uuid
 
 from drama.config import settings
+from drama.core.docker.registry import ContainerRegistry
 from drama.database import get_db_connection
 from drama.logger import get_logger
 from drama.manager import TaskManager, WorkflowManager
@@ -38,13 +42,37 @@ def execute(workflow_request: WorkflowRequest) -> Workflow:
     return workflow
 
 
-def revoke(workflow_id: str) -> Workflow:
+def cancel(workflow_id: str, db: Optional[Database] = None) -> Workflow:
+    """
+    Cancel workflow execution and stop all running Docker containers that are
+    currently associated with the workflow.
+    """
+    logger.debug(f"Cancelling workflow id {workflow_id}")
+
+    db = db if db is not None else get_db_connection()
+
+    # Revoke the workflow first to ensure that no new tasks are started.
+    workflow = revoke(workflow_id=workflow_id, db=db)
+
+    # Stop all Docker containers that are associated with the workflow.
+    registry = ContainerRegistry(db=db)
+    containers = registry.find_all(workflow=workflow_id)
+    if containers:
+        client = docker.from_env()
+        for cid in containers:
+            logger.debug(f"Stopping Docker container {cid}")
+            client.containers.get(cid).stop()
+
+    return workflow
+
+
+def revoke(workflow_id: str, db: Optional[Database] = None) -> Workflow:
     """
     Cancel workflow execution.
     """
     logger.debug(f"Revoking workflow id {workflow_id}")
 
-    db = get_db_connection()
+    db = db if db is not None else get_db_connection()
 
     # executes a new task to revoke workflow
     task_revoke = TaskRequest(
