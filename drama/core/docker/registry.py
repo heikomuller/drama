@@ -104,7 +104,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from pymongo.database import Database
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import git
 import tempfile
@@ -167,7 +167,7 @@ class DockerOp:
     Wrapper class for a specification of an external operator that is executed
     using a Docker container.
     """
-    def __init__(self, doc: Dict):
+    def __init__(self, doc: Dict, version: str):
         """
         Initialize the different attributes and properties fro a given dictionary
         serialization of the operator specification.
@@ -176,7 +176,11 @@ class DockerOp:
         ----------
         doc: dict
             Dictionary serialization of the specification for the operator.
+        version: string
+            Version identifier for the registered operator.
         """
+        self._doc = doc
+        self.version = version
         # The 'name', 'image', and 'commands' are mandatory elements.
         self.name = doc["name"]
         self.image = doc["image"]
@@ -205,6 +209,16 @@ class DockerOp:
             ) for obj in doc.get("parameters", [])
         ]
 
+    def to_dict(self) -> Dict:
+        """
+        Get dictionary serialization for the operator specification.
+
+        Returns
+        -------
+        dict
+        """
+        return self._doc
+
 
 # -- Operator registry --------------------------------------------------------
 
@@ -229,6 +243,19 @@ class OpRegistry(ABC):
         Returns
         -------
         DockerOp
+        """
+        pass
+
+    @abstractmethod
+    def list_ops(self) -> List[Tuple[str, DockerOp]]:
+        """
+        Get listing of all registered operators.
+
+        Returns tuples of operator identifier and operator specification.
+
+        Returns
+        -------
+        list of tuple (string, DockerOp)
         """
         pass
 
@@ -351,7 +378,22 @@ class PersistentRegistry(BaseManager, OpRegistry):
         doc = self.database.catalog.find_one({'opId': identifier})
         if doc is None:
             raise ValueError(f"unknown operator '{identifier}'")
-        return DockerOp(doc=doc['spec'])
+        return DockerOp(doc=doc['spec'], version=doc['version'])
+
+    def list_ops(self) -> List[Tuple[str, DockerOp]]:
+        """
+        Get listing of all registered operators.
+
+        Returns tuples of operator identifier and operator specification.
+
+        Returns
+        -------
+        list of tuple (string, DockerOp)
+        """
+        ops = []
+        for doc in self.database.catalog.find():
+            ops.append((doc['opId'], DockerOp(doc=doc['spec'], version=doc['version'])))
+        return ops
 
     def put_op(self, identifier: str, version: str, spec: Dict, replace: Optional[bool] = False):
         """
@@ -439,6 +481,16 @@ class VolatileRegistry(OpRegistry):
             raise ValueError(f"unknown operator '{identifier}'")
         return self._operators[identifier]
 
+    def list_ops(self) -> List[DockerOp]:
+        """
+        Get listing of all registered operators.
+
+        Returns
+        -------
+        list of DockerOp
+        """
+        return self._operators.values()
+
     def put_op(self, identifier: str, version: str, spec: Dict, replace: Optional[bool] = False):
         """
         Add specification for a new operator to the registry.
@@ -466,7 +518,7 @@ class VolatileRegistry(OpRegistry):
         """
         if identifier in self._operators and not replace:
             raise ValueError(f"operator '{identifier}' exists")
-        self._operators[identifier] = DockerOp(doc=spec)
+        self._operators[identifier] = DockerOp(doc=spec, version=version)
 
 
 # -- Container registry -------------------------------------------------------

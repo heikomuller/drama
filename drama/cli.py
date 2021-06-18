@@ -4,6 +4,7 @@ Simple command-line interface to control drama workflows.
 
 import click
 import json
+import yaml as yml
 
 from drama.core.docker.registry import PersistentRegistry
 from drama.manager import TaskManager, WorkflowManager
@@ -37,9 +38,37 @@ def register_operators(source, specfile, replace):
         specfile=specfile,
         replace=replace
     )
-    print("\nSuccessfully registered the following operators:")
+    click.echo("\nSuccessfully registered the following operators:")
     for op_id in ops:
-        print(f'- {op_id}')
+        click.echo(f'- {op_id}')
+
+
+@click.command(name="list")
+def list_operators():
+    """List installed workflow operators."""
+    ops = PersistentRegistry().list_ops()
+    ops = sorted(ops, key=lambda op: op[0])
+    click.echo("\nThe following operators are currently installed:")
+    for op_id, op in ops:
+        click.echo(f'{op_id} ({op.version})')
+
+
+@click.command(name="show")
+@click.option(
+    '-y',
+    '--yaml',
+    default=False,
+    is_flag=True,
+    help='Show in YAML format'
+)
+@click.argument("operator")
+def show_operator(operator, yaml):
+    """Print operator specification."""
+    op = PersistentRegistry().get_op(operator)
+    if yaml:
+        click.echo(yml.dump(op.to_dict()))
+    else:
+        click.echo(json.dumps(op.to_dict(), indent=4, default=str))
 
 
 @click.group(name="pm")
@@ -49,6 +78,8 @@ def cli_pm():
 
 
 cli_pm.add_command(register_operators)
+cli_pm.add_command(list_operators)
+cli_pm.add_command(show_operator)
 
 
 # -- Workflow Commands --------------------------------------------------------
@@ -69,7 +100,14 @@ def list_workflows(active):
 
 @click.command(name='show')
 @click.argument('workflow_id')
-def show_workflow(workflow_id):
+@click.option(
+    '-y',
+    '--yaml',
+    default=False,
+    is_flag=True,
+    help='Show in YAML format'
+)
+def show_workflow(workflow_id, yaml):
     """Show workflow information."""
     workflow = WorkflowManager().find_one({"id": workflow_id})
     doc = {
@@ -78,7 +116,10 @@ def show_workflow(workflow_id):
         'is_revoked': workflow.is_revoked,
         'tasks': [task.dict() for task in TaskManager().find({"parent": workflow_id})]
     }
-    click.echo(json.dumps(doc, indent=4, default=str))
+    if yaml:
+        click.echo(yml.dump(doc, default_flow_style=False))
+    else:
+        click.echo(json.dumps(doc, indent=4, default=str))
 
 
 @click.command(name='revoke')
