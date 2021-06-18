@@ -109,6 +109,9 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
         workflow_id=pcs.parent,
         registry=pcs.containers
     )
+    # Add container logs to the process log.
+    if result.logs:
+        pcs.debug(result.logs)
     # -- Persist result files and make them available for downstream tasks ----
     # Raise error if the run was not successful.
     # TODO: Needs a better way to handle output logs.
