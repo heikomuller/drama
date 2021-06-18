@@ -33,7 +33,7 @@ import shutil
 from drama.datatype import DataType, is_string
 from drama.core.docker.registry import OpParameter, DockerOp, InputFile, OutputFile
 from drama.core.docker.run import DockerRun
-from drama.core.model import TempFile, TextFile
+from drama.core.model import TextFile
 from drama.models.task import TaskResult
 from drama.process import Process
 from drama.storage.backend.local import LocalResource
@@ -44,24 +44,24 @@ from drama.storage.base import Resource
 class FileResource(DataType):
     """
     Generic file resource for communication between workflow steps. This
-    resource is used to pass annotated (tagged) files between workflow steps.
+    resource is used to pass annotated (labeled) files between workflow steps.
     The *semantic type annotation* for the resource is specified using the
-    ``tag`` property.
+    ``label`` property.
 
-    When referencing tagged files in workflow step input specification, the tag
-    is appended to the *FileResource* separated by a hash (``#``), i.e.,
-    ``upstreamTask.FileResource#tag``.
+    When referencing labeled files in workflow step input specification, the
+    label is appended to the *FileResource* separated by a hash (``#``), i.e.,
+    ``upstreamTask.FileResource#label``.
     """
     resource: str = is_string()
     datatype: str = is_string()
-    tag: str = is_string()
+    label: str = is_string()
 
     @property
     def key(self):
         """
-        Append tag name to the default key for DataTypes.
+        Append label name to the default key for DataTypes.
         """
-        return f"{super().key}#{self.tag}"
+        return f"{super().key}#{self.label}"
 
 
 def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
@@ -118,6 +118,8 @@ def execute(pcs: Process, op: str, **kwargs) -> TaskResult:
     for file in task.files.outputs:
         resource = handle_result_file(pcs=pcs, run=run, file=file)
         files.append(resource)
+    # All result files have been moved. We can now delete the temporary folder
+    # for the Docker run.
     run.erase()
     return TaskResult(files=files)
 
@@ -128,9 +130,8 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     """
     Copy an input file into the temporary folder for the Docker run.
 
-    Input files are either identified by a semantic tag or by a reference to
-    a file in the global data catalog. The latter are referenced by a prefix
-    of ``store::``.
+    Input files are either identified the label of a file that is specified in
+    the inputs dictionary of a TaskRequest.
 
     Parameters
     ----------
@@ -145,32 +146,19 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     -------
     Resource
     """
-    if '::' not in file.src:
-        tag = file.src
-        # SUGGESTION: Add methods to query upstream resources by type and/or
-        # name/tag.
-        doc = pcs.upstream_one(query=tag)
-        datatype = json.loads(doc['datatype'])
-        uri = datatype['uri']
-        if uri == 'http://www.ontologies.khaos.uma.es/bigowl/TextFile':
-            resource = doc['resource']
-            if resource.startswith("minio://"):
-                # HACK ALERT: Is there any way to distinguish between files
-                # that are in the global data catalog and those on the local
-                # run directory?
-                resource = pcs.storage.get_file(resource)
-            resource = TextFile(resource=resource)
-        else:
-            # TODO: Add more types here. This should somehow query a database
-            # to retrieve information for creating the appropriate instance of
-            # the data class object for a resource.
-            raise ValueError(f"unknown data type '{uri}'")
-    elif file.src.startswith('store::'):
-        # Load a resource from the global data store.
-        name = file.src[len('store::'):]
-        resource = pcs.storage.get_file(name)
+    # SUGGESTION: Add methods to query upstream resources by type and/or
+    # name/label.
+    doc = pcs.upstream_one(query=file.src)
+    datatype = json.loads(doc['datatype'])
+    uri = datatype['uri']
+    if uri == 'http://www.ontologies.khaos.uma.es/bigowl/TextFile':
+        resource = doc['resource']
+        resource = TextFile(resource=resource)
     else:
-        raise ValueError(f"invalid source file specification '{file.src}'")
+        # TODO: Add more types here. This should somehow query a database
+        # to retrieve information for creating the appropriate instance of
+        # the data class object for a resource.
+        raise ValueError(f"unknown data type '{uri}'")
     # Copy file to temporary run directory.
     run.copy(src=resource.resource, dst=file.dst)
     return resource
@@ -238,16 +226,15 @@ def get_parameter(parameter: OpParameter, arguments: Dict) -> Any:
 
 def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[Resource]:
     """
-    Copy result file to persistent storage and add to downstream results.
+    Create a temporary resource for a run result file and push the resource
+    to the downstream tasks.
 
-    The idea here is that a file may either be copied to the global data store
-    (the data catalog that is available for all workflows) or to the directory
-    for the workflow run that will be persisted for a successful workflow run.
-    The different storage options are identifier by the prefix ``store::`` and
-    ``rundir::``.
+    Moves the file from the run folder to the process local folder. The file
+    path of the new file is the same as the ``src`` path in the output file
+    specification.
 
-    The file will be available to downstream tasks only if at least one tag is
-    defined in the output file specification.
+    The file will be available to downstream tasks under the label that has
+    been defined in the output file specification.
 
     Parameters
     ----------
@@ -262,30 +249,19 @@ def handle_result_file(pcs: Process, run: DockerRun, file: OutputFile) -> List[R
     -------
     Resource
     """
-    filepath = run.localpath(file.src)
-    # Copy file to persistent storage if a destination is specified.
-    if file.dst:
-        if file.dst.startswith("store::"):
-            # Copy file to the process store.
-            dst = file.dst[len("store::"):]
-            resource = pcs.storage.put_file(file_path=filepath, rename=dst)
-        elif file.dst.startswith("rundir::"):
-            dst = Path(pcs.storage.local_dir, file.dst[len("rundir::"):])
-            resource = LocalResource(resource=str(dst))
-            shutil.copy2(src=filepath, dst=dst)
-        else:
-            raise ValueError(f"invalid destination path '{file.dst}'")
-    else:
-        # Create a temporary resource for the file.
-        resource = TempFile(resource=str(dst))
-    # Add file as tagged resource to the workflow context if any tags are given.
-    if file.tags:
-        for tag in file.tags:
-            pcs.to_downstream(
-                data=FileResource(
-                    resource=resource.resource,
-                    datatype=json.dumps(file.datatype, default=str),
-                    tag=tag
-                )
-            )
+    # Move the file from the run folder to the process local folder.
+    src = run.localpath(file.src)
+    dst = Path(pcs.storage.local_dir, file.src)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(src=src, dst=dst)
+    # Create a resource for the result file.
+    resource = LocalResource(resource=str(dst))
+    # Add file as labeled resource to the workflow context.
+    pcs.to_downstream(
+        data=FileResource(
+            resource=resource.resource,
+            datatype=json.dumps(file.datatype, default=str),
+            label=file.label
+        )
+    )
     return resource

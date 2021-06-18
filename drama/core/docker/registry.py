@@ -121,9 +121,8 @@ class InputFile:
     """
     Input file specification.
     """
-    # The source for an input file is specified as a URI with two components,
-    # the schema and the file identifier or file path. The file scheme can be
-    # one of the following: 'store', 'rundir', or 'context'.
+    # The source for an input file is specified as a label that references a
+    # resource that is defined in the inputs of a TaskRequest.
     src: str
     # Relative path specifying the file location inside the Docker container.
     dst: str
@@ -138,12 +137,9 @@ class OutputFile:
     src: str
     # Some form of serialization for the file DataType.
     datatype: Dict
-    # List of target destinations where the output file will be stored and made
-    # available to downstream operators. File destinations are specified as
-    # URIs following the same format as input source files.
-    dst: Optional[str] = None
-    # List of tags for the output file.
-    tags: Optional[List[str]] = None
+    # Label for referencing the output file in the input specification of other
+    # workflow tasks.
+    label: str
 
 
 @dataclass
@@ -197,8 +193,7 @@ class DockerOp:
                 OutputFile(
                     src=obj["src"],
                     datatype=obj["datatype"],
-                    dst=obj.get("dst"),
-                    tags=obj.get("tags", [])
+                    label=obj.get("label", obj["src"])
                 ) for obj in out_files
             ]
         )

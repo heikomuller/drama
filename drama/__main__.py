@@ -25,15 +25,6 @@ def get_parser():
     subparsers.required = True
 
     subparsers.add_parser("worker", help="Spawn multiple concurrent workers")
-    # Sub-parser for the register command. The source references a directory
-    # on the local file system or a GitHub repository. The specfile is an
-    # optional reference to the specification file inside the source folder.
-    # By default it is assumed that the operator specification is contained in
-    # a file named drama.yaml.
-    regparser = subparsers.add_parser("register", help="Register workflow operators")
-    regparser.add_argument("-s", "--source", required=True)
-    regparser.add_argument("-f", "--specfile", default="drama.yaml", required=False)
-    regparser.add_argument("-r", "--replace", action='store_true', required=False)
     subparsers.add_parser("server", help="Deploy server")
 
     return parser
@@ -47,18 +38,6 @@ def cli():
         dramatiq_ns, _ = make_argument_parser().parse_known_args()
         setattr(dramatiq_ns, "broker", "drama.worker.actor")
         dramatiq_cli(dramatiq_ns)
-    elif args.command == "register":
-        # CLI command for registering new Docker operators from a source
-        # directory or GitHub repository.
-        from drama.core.docker.registry import PersistentRegistry
-        ops = PersistentRegistry().register(
-            source=args.source,
-            specfile=args.specfile,
-            replace=args.replace
-        )
-        print("\nSuccessfully registered the following operators:")
-        for op_id in ops:
-            print(f'- {op_id}')
     elif args.command == "server":
         from drama.api.app import run_server
         run_server()

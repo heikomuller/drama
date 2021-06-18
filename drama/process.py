@@ -45,7 +45,6 @@ class BaseProcess:
         :param module: Task module.
         :param parent: Parent task id.
         """
-        self.task_id = task_id
         self.name = name
         self.module = module
         self.parent = parent
@@ -150,7 +149,7 @@ class Process(BaseProcess):
         inputs: Optional[Dict[str, str]] = None,
         storage: Optional[Storage] = None,
     ):
-        super().__init__(task_id, name, module, parent, params, inputs, storage)
+        super().__init__(name, module, parent, params, inputs, storage)
         self.logger = get_logger(__name__, name=name)
         # Initialize components that interact with the database.
         db = get_db_connection()

@@ -5,11 +5,53 @@ Simple command-line interface to control drama workflows.
 import click
 import json
 
+from drama.core.docker.registry import PersistentRegistry
 from drama.manager import TaskManager, WorkflowManager
 from drama.worker import revoke
 
 
-# -- Commands -----------------------------------------------------------------
+# -- Operator registry --------------------------------------------------------
+
+@click.command(name="install")
+@click.option(
+    "-r", "--replace",
+    default=False,
+    is_flag=True,
+    help="Replace existing operators"
+)
+@click.option(
+    "-s", "--source",
+    required=True
+)
+@click.option(
+    "-f", "--specfile",
+    default="drama.yaml",
+    required=False
+)
+def register_operators(source, specfile, replace):
+    """Install workflow operators from repository."""
+    # CLI command for registering new Docker operators from a source
+    # directory or GitHub repository.
+    ops = PersistentRegistry().register(
+        source=source,
+        specfile=specfile,
+        replace=replace
+    )
+    print("\nSuccessfully registered the following operators:")
+    for op_id in ops:
+        print(f'- {op_id}')
+
+
+@click.group(name="pm")
+def cli_pm():
+    """Drama package manager."""
+    pass
+
+
+cli_pm.add_command(register_operators)
+
+
+# -- Workflow Commands --------------------------------------------------------
 
 @click.command(name='list')
 @click.option(
@@ -46,14 +88,24 @@ def revoke_workflow(workflow_id):
     revoke(workflow_id)
 
 
+@click.group(name="workflows")
+def cli_workflows():
+    """Drama workflow manager."""
+    pass
+
+
+cli_workflows.add_command(list_workflows)
+cli_workflows.add_command(show_workflow)
+cli_workflows.add_command(revoke_workflow)
+
+
 # -- Create command group -----------------------------------------------------
 
 @click.group()
-def cli():  # pragma: no cover
+def cli():
     """Command line interface for drama workflows."""
     pass
 
 
-cli.add_command(list_workflows)
-cli.add_command(show_workflow)
-cli.add_command(revoke_workflow)
+cli.add_command(cli_pm)
+cli.add_command(cli_workflows)

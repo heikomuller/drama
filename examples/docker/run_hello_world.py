@@ -7,7 +7,7 @@ the GitHub repository: https://github.com/heikomuller/docker-helloworld-example
 Before running the workflow, the operators need to be registered with the
 local database:
 
-poetry run drama register -s https://github.com/heikomuller/docker-helloworld-example.git
+dpm install -s https://github.com/heikomuller/docker-helloworld-example.git
 """
 
 import argparse
