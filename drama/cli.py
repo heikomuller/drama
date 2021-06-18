@@ -63,7 +63,7 @@ def list_operators():
 )
 @click.argument("operator")
 def show_operator(operator, yaml):
-    """Print operator specification."""
+    """Show operator specification."""
     op = PersistentRegistry().get_op(operator)
     if yaml:
         click.echo(yml.dump(op.to_dict()))
@@ -94,8 +94,10 @@ cli_pm.add_command(show_operator)
 )
 def list_workflows(active):
     """List workflows."""
-    for wf in WorkflowManager().list_all(active=active):
-        click.echo(f"{wf.workflow_id}\t{wf.status}\t{wf.last_update}")
+    workflows = WorkflowManager().list_all(active=active)
+    click.echo("\nWorkflow ID\t\t\t\tStatus\tRevoked\tLast update")
+    for wf in workflows:
+        click.echo(f"{wf.workflow_id}\t{wf.status}\t{wf.revoked}\t{wf.last_update}")
 
 
 @click.command(name='show')
@@ -108,7 +110,7 @@ def list_workflows(active):
     help='Show in YAML format'
 )
 def show_workflow(workflow_id, yaml):
-    """Show workflow information."""
+    """Show workflow."""
     workflow = WorkflowManager().find_one({"id": workflow_id})
     doc = {
         'workflow_id': workflow_id,

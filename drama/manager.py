@@ -16,6 +16,7 @@ class WorkflowDescriptor:
     workflow_id: str
     status: str
     last_update: datetime
+    revoked: bool
 
 
 class BaseManager(ABC):
@@ -96,16 +97,25 @@ class WorkflowManager(BaseManager):
         task is in failed state the result is RUNNING.
         """
         workflows = defaultdict(list)
-        select_clause = {"_id": 0, "parent": 1, "status": 1, "updated_at": 1}
+        select_clause = {"_id": 0, "parent": 1, "name": 1, "status": 1, "updated_at": 1}
         for doc in self.database.task.find({}, select_clause):
             workflow_id = doc['parent']
-            workflows[workflow_id].append((doc['status'], doc['updated_at']))
+            workflows[workflow_id].append((doc['name'], doc['status'], doc['updated_at']))
         result = list()
         for key, value in workflows.items():
+            revoked = False
+            status = set()
+            updates = list()
+            for name, st, ts in value:
+                status.add(st)
+                updates.append(ts)
+                if name == "RevokeExecution":
+                    revoked = True
             wf = WorkflowDescriptor(
                 workflow_id=key,
-                status=get_status({st for st, _ in value}),
-                last_update=max([ts for _, ts in value])
+                status=get_status(status),
+                last_update=max(updates),
+                revoked=revoked
             )
             if not active or wf.status == TaskStatus.STATUS_RUNNING:
                 result.append(wf)
