@@ -2,13 +2,76 @@
 Simple command-line interface to control drama workflows.
 """
 
+from dramatiq.cli import main as dramatiq_cli
+from dramatiq.cli import make_argument_parser
+
 import click
 import json
+import multiprocessing
 import yaml as yml
 
+from drama import __author__, __version__
+from drama.api.app import run_server
 from drama.core.docker.registry import PersistentRegistry
 from drama.manager import TaskManager, WorkflowManager
 from drama.worker import cancel, revoke
+
+CPUS = multiprocessing.cpu_count()
+
+HEADER = "\n".join(
+    [
+        r"    ___  ___  ___   __  ______",
+        r"   / _ \/ _ \/ _ | /  |/  / _ |",
+        r"  / // / , _/ __ |/ /|_/ / __ |",
+        r" /____/_/|_/_/ |_/_/  /_/_/ |_|",
+        "",
+        f" ver. {__version__}     author {__author__}",
+        "",
+    ]
+)
+
+
+def drama_header(f):
+    """
+    Decorator for CLI commands that prints the drama header.
+    """
+    def wrapper(**kwargs):
+        click.echo(HEADER)
+        f(**kwargs)
+    return wrapper
+
+
+# -- Administrator ------------------------------------------------------------
+
+@click.command(name="worker")
+@click.option(
+    "--processes", "-p",
+    default=CPUS,
+    type=int,
+    help=f"the number of worker processes to run (default: {CPUS})"
+)
+@click.option(
+    "--threads", "-t",
+    default=8,
+    type=int,
+    help="the number of worker threads per process (default: 8)"
+)
+@drama_header
+def span_workers(processes, threads):
+    """Spawn multiple concurrent workers."""
+    dramatiq_ns, _ = make_argument_parser().parse_known_args()
+    setattr(dramatiq_ns, "broker", "drama.worker.actor")
+    setattr(dramatiq_ns, "processes", processes)
+    setattr(dramatiq_ns, "threads", threads)
+    click.echo(json.dumps(vars(dramatiq_ns), indent=4))
+    # dramatiq_cli(dramatiq_ns)
+
+
+@click.command(name="server")
+@drama_header
+def deply_server():
+    """Deploy server."""
+    run_server()
 
 
 # -- Operator registry --------------------------------------------------------
@@ -29,6 +92,7 @@ from drama.worker import cancel, revoke
     default="drama.yaml",
     required=False
 )
+@drama_header
 def register_operators(source, specfile, replace):
     """Install workflow operators from repository."""
     # CLI command for registering new Docker operators from a source
@@ -44,6 +108,7 @@ def register_operators(source, specfile, replace):
 
 
 @click.command(name="list")
+@drama_header
 def list_operators():
     """List installed workflow operators."""
     ops = PersistentRegistry().list_ops()
@@ -62,6 +127,7 @@ def list_operators():
     help='Show in YAML format'
 )
 @click.argument("operator")
+@drama_header
 def show_operator(operator, yaml):
     """Show operator specification."""
     op = PersistentRegistry().get_op(operator)
@@ -86,6 +152,7 @@ cli_pm.add_command(show_operator)
 
 @click.command(name='cancel')
 @click.argument('workflow_id')
+@drama_header
 def cancel_workflow(workflow_id):
     """Cancel workflow."""
     cancel(workflow_id)
@@ -99,6 +166,7 @@ def cancel_workflow(workflow_id):
     is_flag=True,
     help='List only active workflows'
 )
+@drama_header
 def list_workflows(active):
     """List workflows."""
     workflows = WorkflowManager().list_all(active=active)
@@ -116,6 +184,7 @@ def list_workflows(active):
     is_flag=True,
     help='Show in YAML format'
 )
+@drama_header
 def show_workflow(workflow_id, yaml):
     """Show workflow."""
     workflow = WorkflowManager().find_one({"id": workflow_id})
@@ -133,6 +202,7 @@ def show_workflow(workflow_id, yaml):
 
 @click.command(name='revoke')
 @click.argument('workflow_id')
+@drama_header
 def revoke_workflow(workflow_id):
     """Revoke workflow."""
     revoke(workflow_id)
@@ -158,5 +228,7 @@ def cli():
     pass
 
 
+cli.add_command(span_workers)
+cli.add_command(deply_server)
 cli.add_command(cli_pm)
 cli.add_command(cli_workflows)

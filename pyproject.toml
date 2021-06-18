@@ -44,6 +44,7 @@ pytest = "^6.1.0"
 
 [tool.poetry.scripts]
 drama = "drama.__main__:cli"
+dadm = "drama.cli:cli"
 dpm = "drama.cli:cli_pm"
 dwm = "drama.cli:cli_workflows"
 
