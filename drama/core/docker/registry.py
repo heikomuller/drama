@@ -19,15 +19,13 @@ schema:
           image: "docker image identifier"
           files:
               inputs:
-                  - src: "source file URI"
-                    type: "file type identifier"
+                  - src: "source file label"
                     dst: "relative target file path inside Docker container"
               outputs:
                   - src: "relative source file path inside Docker container"
-                    type: "file type identifier"
-                    dst: "target file URI"
-                    tags:
-                        - "associate tags with file"
+                    datatype:
+                        - uri: "Data type URI"
+                    label: "output file label"
           parameters:
               - name: "unique parameter name"
                 type: "data type: str, int, or float"
@@ -39,6 +37,10 @@ schema:
           baseImage: "tag for the base image (i.e., the runtime)"
           requirements:
               - "Python package references when using python base images"
+          packages:
+              - name: "Name of packages whose current versions should be downloaded"
+                dependencies: "logical indicating whether to also install uninstalled packages which these packages depend on"
+                repos": "base URL of the repositorie to use,"
           files:
               - src: "relative path (inside the repository)"
                 dst: "relative path (inside the Docker image)"
@@ -68,20 +70,9 @@ value will be used if no value is given for the parameter when the operator is i
 
 - ``files`` contains specifications for input files that will be made available to the Docker
 container via mounted volumes, and output files that will be copied from the mounted container
-volumes to the workflow context and/or persistent storage. References to files inside a Docker
-container are made via relative path expressions. References to files in the workflow context
-or on persistent storage are made via tag names or via URIs that have the following
-format: <scheme>::<fileIdentifier> The scheme refers to the type of storage that
-contains the file. The following two schemes are currently supported:
-
-- *store*: The global persistent store for data files that are independent
-  of individual workflow runs and that are available as input for tasks in
-  different workflows (i.e., the **data catalog**).
-- *rundir*: Each workflow run has a dedicated run directory where those files
-  are stored that are generated during the workflow run and that are kept
-  as the workflow result after the workflow run finishes.
-
-The *fileIdentifier*  is a relative path expression.
+volumes to the workflow context. References to files inside a Docker container are made via
+relative path expressions. References to files in the workflow context are made via labels that
+are assigned to the files as path of the inputs specification of a TaskRequest.
 
 
 Building Docker Images
@@ -90,11 +81,21 @@ Building Docker Images
 The ``dockerImages`` element contains a list of directives for building Docker images that
 are required for running the defined operators. These images are built from a base image
 and can include source code files from the repository. The exact schema for the documents
-in the list is dependent on the base image. For Python base images (``python:3.7``, ``python:3.8``,
-``python:3.9``) the document can list additional required packages that need to be installed
-in the created image. The ``files`` element refers to files in the repository (``src`` is
-the file path relative to the repository root) that are copied into the created Docker
-image (``dst``).
+in the list is dependent on the base image.
+
+For Python base images (``python:3.7``, ``python:3.8``, ``python:3.9``) the document can
+list additional required packages (using the ``requirements`` element) that need to be
+installed in the created image.
+
+For R base images (``rocker/r-ver``, ``rocker/tidyverse``, ``rocker/verse``) the document
+can list additional packages (using the ``packages`` element) that need to be
+installed in the created image. The file ``install_packages.R`` is reserved for
+the build command and should not be specified in the ``files`` element of the build
+specification. Packages are specified as dictionaries with mandatory element ``name`` and
+optional elements ``dependencies`` and ``repos``.
+
+The ``files`` element refers to files in the repository (``src`` is the file path relative
+to the repository root) that are copied into the created Docker image (``dst``).
 
 Docker images will be built once at the time when the operators are registered.
 """
@@ -110,7 +111,7 @@ import git
 import tempfile
 import yaml
 
-from drama.core.docker.build import docker_build_py
+from drama.core.docker.build import docker_build
 from drama.manager import BaseManager
 
 
@@ -326,13 +327,7 @@ class OpRegistry(ABC):
                 doc = yaml.load(f, Loader=yaml.FullLoader)
             # Build any Docker images that are specified in the document.
             for obj in doc.get("dockerImages", []):
-                if obj["baseImage"] in ["python:3.7", "python:3.8", "python:3.9"]:
-                    docker_build_py(
-                        name=obj["tag"],
-                        requirements=obj.get("requirements"),
-                        baseimage=obj["baseImage"],
-                        files=[(sourcedir, f["src"], f["dst"]) for f in obj.get("files", [])]
-                    )
+                docker_build(sourcedir=sourcedir, spec=obj)
             # Add specifications for external operators.
             version = doc.get("version")
             namespace = doc.get("namespace")
