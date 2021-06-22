@@ -4,7 +4,7 @@ images that will be used to execute workflow steps.
 """
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import docker
 import os
@@ -14,14 +14,14 @@ import tempfile
 from drama.core.docker.base import Pathname
 
 
-def create_dockerfile_py(spec: Dict, targetdir: Pathname, dockerfile: List[str]):
+def py_requirements(requirements: List[str], targetdir: Pathname, dockerfile: List[str]):
     """
-    Add lines to a Dockerfile for a Python container base image.
+    Add lines to a Dockerfile for installing Python requirements.
 
     Parameters
     ----------
-    spec: dict
-        Docker image specification.
+    requirements: list of string
+        List of packages that are installed in the Docker image.
     targetdir: Pathname
         Base directory for building the Docker image.
     dockerfile: list of string
@@ -31,10 +31,6 @@ def create_dockerfile_py(spec: Dict, targetdir: Pathname, dockerfile: List[str])
     -------
     list of string
     """
-    # Create requirements.txt file if any requirements are specified.
-    requirements = spec.get("requirements")
-    if not requirements:
-        return
     with open(os.path.join(targetdir, "requirements.txt"), "wt") as f:
         for line in requirements:
             f.write(f"{line}\n")
@@ -42,14 +38,15 @@ def create_dockerfile_py(spec: Dict, targetdir: Pathname, dockerfile: List[str])
     dockerfile.append("RUN pip install -r requirements.txt")
 
 
-def create_dockerfile_r(spec: Dict, targetdir: Pathname, dockerfile: List[str]):
+def r_packages(packages: List[Dict], targetdir: Pathname, dockerfile: List[str]):
     """
-    Add lines to a Dockerfile for a R container base image.
+    Add lines to install packages for a Docker image that is based on the R
+    runtime.
 
     Parameters
     ----------
-    spec: dict
-        Docker image specification.
+    packages: list of dict
+        List of package specifications
     targetdir: Pathname
         Base directory for building the Docker image.
     dockerfile: list of string
@@ -59,10 +56,6 @@ def create_dockerfile_r(spec: Dict, targetdir: Pathname, dockerfile: List[str]):
     -------
     string, list of string
     """
-    # Create install_packages.R file if any packages are specified.
-    packages = spec.get("packages")
-    if not packages:
-        return
     with open(os.path.join(targetdir, "install_packages.R"), "wt") as f:
         for pkg in packages:
             pkg_name = pkg["name"]
@@ -150,10 +143,16 @@ def get_dockerfile(spec: Dict, sourcedir: Pathname, targetdir: Pathname) -> List
         for src, dst in files:
             lines.append(f"COPY {src} {dst}")
         # Add base image-specific lines to the Dockerfile.
-        if baseimage in ["python:3.7", "python:3.8", "python:3.9"]:
-            create_dockerfile_py(spec=spec, targetdir=targetdir, dockerfile=lines)
-        elif baseimage in ["rocker/r-ver", "rocker/tidyverse", "rocker/verse", "rocker/r-devel"]:
-            create_dockerfile_r(spec=spec, targetdir=targetdir, dockerfile=lines)
-        else:
-            raise ValueError(f"unknown base image '{baseimage}'")
+        if "requirements" in spec:
+            py_requirements(
+                requirements=spec["requirements"],
+                targetdir=targetdir,
+                dockerfile=lines
+            )
+        elif "packages" in spec:
+            r_packages(
+                packages=spec["packages"],
+                targetdir=targetdir,
+                dockerfile=lines
+            )
         return lines

@@ -33,7 +33,7 @@ import shutil
 from drama.datatype import DataType, is_string
 from drama.core.docker.registry import OpParameter, DockerOp, InputFile, OutputFile
 from drama.core.docker.run import DockerRun
-from drama.core.model import TextFile
+from drama.core.model import TempFile, TextFile
 from drama.models.task import TaskResult
 from drama.process import Process
 from drama.storage.backend.local import LocalResource
@@ -152,16 +152,17 @@ def copy_input_file(pcs: Process, run: DockerRun, file: InputFile) -> Path:
     # SUGGESTION: Add methods to query upstream resources by type and/or
     # name/label.
     doc = pcs.upstream_one(query=file.src)
-    datatype = json.loads(doc['datatype'])
-    uri = datatype['uri']
-    if uri == 'http://www.ontologies.khaos.uma.es/bigowl/TextFile':
-        resource = doc['resource']
-        resource = TextFile(resource=resource)
+    resource_uri = doc['resource']
+    datatype = json.loads(doc.get('datatype', '{"uri": "unknown"}'))['uri']
+    if datatype == 'http://www.ontologies.khaos.uma.es/bigowl/TextFile':
+        resource = TextFile(resource=resource_uri)
+    elif resource_uri.startswith("minio://"):
+        # TODO: Is there a better way to copy files from the MinIO file storage?
+        # Maybe the run.copy command has to be aware of the different storage
+        # options.
+        resource = TempFile(resource=pcs.storage.get_file(data_file=resource_uri))
     else:
-        # TODO: Add more types here. This should somehow query a database
-        # to retrieve information for creating the appropriate instance of
-        # the data class object for a resource.
-        raise ValueError(f"unknown data type '{uri}'")
+        resource = Resource(resource=resource_uri)
     # Copy file to temporary run directory.
     run.copy(src=resource.resource, dst=file.dst)
     return resource
